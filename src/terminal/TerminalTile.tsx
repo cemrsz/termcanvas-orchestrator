@@ -59,6 +59,15 @@ import { useTerminalFindStore } from "../stores/terminalFindStore";
 import { recordRenderDiagnostic } from "./renderDiagnostics";
 import { resetWebGL } from "./webglContextPool";
 import { refreshRegisteredTerminalViewports } from "./terminalRegistry";
+import {
+  isAgentTerminalType,
+  useOrchestrationStore,
+} from "../stores/orchestrationStore";
+import {
+  makeTerminalOrchestrator,
+  removeOrchestratorRole,
+} from "../actions/orchestrationSceneActions";
+import type { MenuItem } from "../components/ContextMenu";
 
 interface Props {
   lodMode: TerminalMountMode;
@@ -189,6 +198,50 @@ export function TerminalTile({
   width,
   height,
 }: Props) {
+  const orchestratorIds = useOrchestrationStore(
+    (state) => state.orchestratorIds,
+  );
+  const orchestrationLinks = useOrchestrationStore((state) => state.links);
+  const isOrchestrator = orchestratorIds.includes(terminal.id);
+  const orchestrationMenuItems: MenuItem[] = !isAgentTerminalType(terminal.type)
+    ? []
+    : isOrchestrator
+      ? [
+          { type: "separator" },
+          {
+            label: "Remove Orchestrator Role",
+            onClick: () => removeOrchestratorRole(terminal.id),
+          },
+        ]
+      : [
+          { type: "separator" },
+          ...orchestratorIds.map((orchestratorId, index): MenuItem => {
+            const link = orchestrationLinks.find(
+              (candidate) =>
+                candidate.orchestratorId === orchestratorId &&
+                candidate.targetKind === "terminal" &&
+                candidate.targetId === terminal.id,
+            );
+            const suffix = orchestratorIds.length > 1 ? ` #${index + 1}` : "";
+            return link
+              ? {
+                  label: `Disconnect from Orchestrator${suffix}`,
+                  onClick: () =>
+                    useOrchestrationStore.getState().disconnect(link.id),
+                }
+              : {
+                  label: `Connect to Orchestrator${suffix}`,
+                  onClick: () =>
+                    useOrchestrationStore
+                      .getState()
+                      .connect(orchestratorId, "terminal", terminal.id),
+                };
+          }),
+          {
+            label: "Make Orchestrator",
+            onClick: () => void makeTerminalOrchestrator(terminal.id),
+          },
+        ];
   const [contextMenu, setContextMenu] = useState<{
     x: number;
     y: number;
@@ -1345,6 +1398,7 @@ export function TerminalTile({
                     },
                   ]
                 : []),
+              ...orchestrationMenuItems,
             ]}
             onClose={() => setContextMenu(null)}
           />,
