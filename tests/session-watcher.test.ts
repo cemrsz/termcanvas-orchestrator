@@ -245,6 +245,13 @@ test("claude project key normalizes Windows paths", () => {
   );
 });
 
+test("claude project key replaces spaces, underscores and non-ASCII letters", () => {
+  assert.equal(
+    toClaudeProjectKey("C:/Users/foo/Repolar calismalar/Cold_n8n-Whıdırcan"),
+    "C--Users-foo-Repolar-calismalar-Cold-n8n-Wh-d-rcan",
+  );
+});
+
 test("claude telemetry parser marks thinking and tool_pending distinctly", () => {
   const events = parseSessionTelemetryLine(
     JSON.stringify({

@@ -312,7 +312,9 @@ function resolveKimiSessionFile(sessionId: string, cwd: string): string | null {
 }
 
 export function toClaudeProjectKey(cwd: string): string {
-  return cwd.replaceAll(/[/\\.:]/g, "-");
+  // Claude Code replaces every non-alphanumeric character (spaces,
+  // underscores and non-ASCII letters included) with "-".
+  return cwd.replaceAll(/[^a-zA-Z0-9]/g, "-");
 }
 
 export function resolveSessionFile(
