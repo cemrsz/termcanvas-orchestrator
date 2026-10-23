@@ -1,6 +1,7 @@
 /// <reference types="electron" />
 
 import { useEffect, useRef, useCallback, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   removeBrowserCardFromScene,
   updateBrowserCardInScene,
@@ -49,6 +50,11 @@ export function BrowserCard({ card }: Props) {
     origW: number;
     origH: number;
   } | null>(null);
+
+  // While moving or resizing, a full-window shield keeps mouse events in the
+  // host page: a <webview> under the cursor would swallow them and end the
+  // gesture after the first step.
+  const [gesture, setGesture] = useState<"move" | "resize" | null>(null);
 
   const cardId = `browser:${card.id}`;
   const isSelected = useSelectionStore((state) =>
@@ -115,9 +121,11 @@ export function BrowserCard({ card }: Props) {
       };
       const handleUp = () => {
         dragRef.current = null;
+        setGesture(null);
         window.removeEventListener("mousemove", handleMove);
         window.removeEventListener("mouseup", handleUp);
       };
+      setGesture("move");
       window.addEventListener("mousemove", handleMove);
       window.addEventListener("mouseup", handleUp);
     },
@@ -145,9 +153,11 @@ export function BrowserCard({ card }: Props) {
       };
       const handleUp = () => {
         resizeRef.current = null;
+        setGesture(null);
         window.removeEventListener("mousemove", handleMove);
         window.removeEventListener("mouseup", handleUp);
       };
+      setGesture("resize");
       window.addEventListener("mousemove", handleMove);
       window.addEventListener("mouseup", handleUp);
     },
@@ -175,15 +185,29 @@ export function BrowserCard({ card }: Props) {
         outline: isSelected ? "2px solid var(--accent)" : undefined,
         outlineOffset: isSelected ? -2 : undefined,
       }}
-      onMouseDownCapture={(e) => {
-        e.stopPropagation();
-        activateCardInScene(cardId);
-      }}
+      onMouseDownCapture={() => activateCardInScene(cardId)}
+      // Stop in the bubble phase: stopping in the capture phase kept the
+      // press from ever reaching the header's drag and the resize handle.
+      onMouseDown={(e) => e.stopPropagation()}
     >
       <div
         className="flex-none flex items-center gap-1.5 px-2 py-1.5 bg-[var(--bg)] border-b border-[var(--border)] cursor-grab active:cursor-grabbing select-none"
         onMouseDown={handleDragStart}
       >
+        <span
+          className="flex-none px-0.5 text-[var(--text-faint)]"
+          title="Drag to move"
+          aria-hidden="true"
+        >
+          <svg width="8" height="12" viewBox="0 0 8 12" fill="currentColor">
+            <circle cx="2" cy="2" r="1" />
+            <circle cx="6" cy="2" r="1" />
+            <circle cx="2" cy="6" r="1" />
+            <circle cx="6" cy="6" r="1" />
+            <circle cx="2" cy="10" r="1" />
+            <circle cx="6" cy="10" r="1" />
+          </svg>
+        </span>
         <button
           className="p-0.5 text-[var(--text-muted)] hover:text-[var(--text-primary)]"
           onClick={() => webviewRef.current?.goBack()}
@@ -261,6 +285,15 @@ export function BrowserCard({ card }: Props) {
           <path d="M9 1L1 9M9 5L5 9M9 8L8 9" stroke="currentColor" strokeWidth="1" />
         </svg>
       </div>
+
+      {gesture &&
+        createPortal(
+          <div
+            className="fixed inset-0 z-[200]"
+            style={{ cursor: gesture === "move" ? "grabbing" : "se-resize" }}
+          />,
+          document.body,
+        )}
     </div>
   );
 }

@@ -23,3 +23,4 @@ ekler; aşağıdaki liste commit sırasıyla aynıdır.
 11. [Terminal sağ tık menüsü](11-terminal-menusu.md) — Connect / Disconnect / Make Orchestrator
 12. [Düzeltme: Claude oturum yolu](12-oturum-yolu.md) — boşluk, _ ve Türkçe harfli klasörlerde oturum dosyası bulunamıyordu
 13. [Düzeltme: agent isimleri korunuyor](13-isimler.md) — bağlı agent'ların rol adları yeniden başlatmada silinmiyor
+14. [Düzeltme: tarayıcı kartı sürükleme](14-tarayici-karti.md) — n8n kartı gibi tarayıcı kartları taşınamıyordu
