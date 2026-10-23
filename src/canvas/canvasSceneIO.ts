@@ -18,6 +18,10 @@
 import { clearSceneSelection } from "../actions/sceneSelectionActions";
 import { restoreBrowserCardsInScene } from "../actions/sceneCardActions";
 import { useBrowserCardStore } from "../stores/browserCardStore";
+import {
+  captureOrchestration,
+  useOrchestrationStore,
+} from "../stores/orchestrationStore";
 import { useCanvasStore } from "../stores/canvasStore";
 import { useDrawingStore } from "../stores/drawingStore";
 import { useProjectStore } from "../stores/projectStore";
@@ -119,8 +123,16 @@ function deriveStashItemsFromProjects(
  */
 export function captureLiveCanvasScene(): SceneDocument {
   const scrollbacks = serializeAllTerminalRuntimeBuffers();
-  const projects = useProjectStore.getState().projects.map((project) =>
+  const liveProjects = useProjectStore.getState().projects;
+  const projects = liveProjects.map((project) =>
     toPersistedProjectData(project, scrollbacks),
+  );
+  const liveTerminalIds = new Set(
+    liveProjects.flatMap((project) =>
+      project.worktrees.flatMap((worktree) =>
+        worktree.terminals.map((terminal) => terminal.id),
+      ),
+    ),
   );
 
   return buildSceneDocument({
@@ -128,6 +140,7 @@ export function captureLiveCanvasScene(): SceneDocument {
     projects,
     drawings: useDrawingStore.getState().elements,
     browserCards: useBrowserCardStore.getState().cards,
+    orchestration: captureOrchestration(liveTerminalIds),
   });
 }
 
@@ -150,6 +163,7 @@ export function applyCanvasSceneToLive(scene: SceneDocument) {
   useProjectStore.setState(normalizeProjectsFocus(restoredProjects));
   useDrawingStore.setState({ elements: restored.drawings });
   restoreBrowserCardsInScene(restored.browserCards);
+  useOrchestrationStore.getState().restore(scene.orchestration);
   useStashStore
     .getState()
     .setItems(deriveStashItemsFromProjects(restoredProjects));

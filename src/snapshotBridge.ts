@@ -9,6 +9,10 @@ import type {
   TerminalType,
 } from "./types";
 import type { SceneDocument } from "./types/scene";
+import type {
+  OrchestrationDocument,
+  OrchestrationSource,
+} from "./types/orchestration";
 import type { WorkspaceCanvas, WorkspaceDocument } from "./types/workspace";
 import { DEFAULT_CANVAS_NAME } from "./types/workspace";
 import type { useProjectStore } from "./stores/projectStore";
@@ -610,6 +614,7 @@ function coerceSceneDocument(value: unknown): SceneDocument | null {
     : [];
 
   const stashedTerminals = normalizeStashedTerminals(record.stashedTerminals);
+  const orchestration = normalizeOrchestration(record.orchestration);
 
   return {
     version: 2,
@@ -621,7 +626,46 @@ function coerceSceneDocument(value: unknown): SceneDocument | null {
         : {},
     annotations,
     ...(stashedTerminals.length > 0 ? { stashedTerminals } : {}),
+    ...(orchestration ? { orchestration } : {}),
   };
+}
+
+function normalizeOrchestration(
+  raw: unknown,
+): OrchestrationDocument | undefined {
+  if (!isRecord(raw)) return undefined;
+  const orchestratorIds = Array.isArray(raw.orchestratorIds)
+    ? raw.orchestratorIds.filter((id): id is string => typeof id === "string")
+    : [];
+  const sources: OrchestrationDocument["sources"] = {};
+  if (isRecord(raw.sources)) {
+    for (const [id, source] of Object.entries(raw.sources)) {
+      if (!isRecord(source) || typeof source.kind !== "string") continue;
+      sources[id] = {
+        id,
+        kind: source.kind as OrchestrationSource["kind"],
+        name: typeof source.name === "string" ? source.name : "",
+        url: typeof source.url === "string" ? source.url : "",
+        description:
+          typeof source.description === "string" ? source.description : "",
+        x: typeof source.x === "number" ? source.x : 0,
+        y: typeof source.y === "number" ? source.y : 0,
+        w: typeof source.w === "number" ? source.w : 300,
+        h: typeof source.h === "number" ? source.h : 190,
+      };
+    }
+  }
+  const links = Array.isArray(raw.links)
+    ? raw.links.filter(
+        (link): link is OrchestrationDocument["links"][number] =>
+          isRecord(link) &&
+          typeof link.id === "string" &&
+          typeof link.orchestratorId === "string" &&
+          (link.targetKind === "terminal" || link.targetKind === "source") &&
+          typeof link.targetId === "string",
+      )
+    : [];
+  return { orchestratorIds, sources, links };
 }
 
 function looksLikeSceneWorkspaceSnapshot(record: Record<string, unknown>) {

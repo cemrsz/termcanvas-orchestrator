@@ -12,3 +12,4 @@ ekler; aşağıdaki liste commit sırasıyla aynıdır.
 
 1. [Veri modeli](01-veri-modeli.md) — orkestrasyon grafiğinin tipleri
 2. [Orkestrasyon store'u](02-store.md) — orkestratörler, kaynaklar ve kablolar için zustand store
+3. [Sahne kaydı](03-kalicilik.md) — grafiği state.json'a yaz ve geri yükle

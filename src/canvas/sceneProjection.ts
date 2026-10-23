@@ -14,6 +14,7 @@ import type {
   SceneSelection,
 } from "../types/scene";
 import type { DrawingElement } from "../stores/drawingStore";
+import type { OrchestrationDocument } from "../types/orchestration";
 import type { SelectedItem } from "../stores/selectionStore";
 import {
   restorePersistedProjectData,
@@ -36,6 +37,7 @@ interface SceneDocumentState {
   drawings?: DrawingElement[] | null;
   browserCards?: Record<string, BrowserCardData> | null;
   stashedTerminals?: PersistedStashedTerminal[] | null;
+  orchestration?: OrchestrationDocument | null;
 }
 
 function worldAnchor(position: { x: number; y: number }): AnnotationAnchor {
@@ -266,6 +268,7 @@ export function buildSceneDocument(
     annotations:
       state.annotations ?? (state.drawings ?? []).map(drawingToAnnotation),
     stashedTerminals: state.stashedTerminals ?? undefined,
+    ...(state.orchestration ? { orchestration: state.orchestration } : {}),
   };
 }
 
