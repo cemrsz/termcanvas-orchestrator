@@ -671,6 +671,18 @@ contextBridge.exposeInMainWorld("termcanvas", {
     submit: (request: unknown) =>
       ipcRenderer.invoke("composer:submit", request),
   },
+  orchestrator: {
+    prepare: (terminalId: string, worktreePath: string) =>
+      ipcRenderer.invoke(
+        "orchestrator:prepare",
+        terminalId,
+        worktreePath,
+      ) as Promise<{
+        instructionsRelPath: string;
+        scriptRelPath: string;
+        startPrompt: string;
+      }>,
+  },
   usage: {
     query: (dateStr: string) => ipcRenderer.invoke("usage:query", dateStr),
     queryRange: (startDate: string, endDate: string) =>

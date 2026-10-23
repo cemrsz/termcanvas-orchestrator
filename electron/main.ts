@@ -58,6 +58,10 @@ import {
   submitComposerRequest,
 } from "./composer-submit";
 import {
+  buildOrchestratorStartPrompt,
+  writeOrchestratorWorkspace,
+} from "./orchestrator-bridge";
+import {
   collectUsage,
   collectUsageRange,
   collectHeatmapData,
@@ -1840,6 +1844,24 @@ function setupIpc() {
           error: err instanceof Error ? err.message : String(err),
         };
       }
+    },
+  );
+
+  ipcMain.handle(
+    "orchestrator:prepare",
+    (_event, terminalId: string, worktreePath: string) => {
+      const workspace = writeOrchestratorWorkspace({
+        terminalId,
+        worktreePath,
+        portFile: PORT_FILE,
+      });
+      return {
+        instructionsRelPath: workspace.instructionsRelPath,
+        scriptRelPath: workspace.scriptRelPath,
+        startPrompt: buildOrchestratorStartPrompt(
+          workspace.instructionsRelPath,
+        ),
+      };
     },
   );
 

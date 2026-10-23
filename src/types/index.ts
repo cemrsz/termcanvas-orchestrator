@@ -980,6 +980,16 @@ export interface TermCanvasAPI {
   composer: {
     submit: (request: ComposerSubmitRequest) => Promise<ComposerSubmitResult>;
   };
+  orchestrator: {
+    prepare: (
+      terminalId: string,
+      worktreePath: string,
+    ) => Promise<{
+      instructionsRelPath: string;
+      scriptRelPath: string;
+      startPrompt: string;
+    }>;
+  };
   usage: {
     query: (dateStr: string) => Promise<UsageSummary>;
     queryRange: (

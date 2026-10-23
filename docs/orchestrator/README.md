@@ -15,3 +15,4 @@ ekler; aşağıdaki liste commit sırasıyla aynıdır.
 3. [Sahne kaydı](03-kalicilik.md) — grafiği state.json'a yaz ve geri yükle
 4. [Köprü aracı](04-kopru.md) — ORCHESTRATOR.md talimatı ve tc.mjs komut aracı
 5. [API uçları](05-api.md) — /orchestrator uçları: manifest, agent, send, reply
+6. [IPC ve preload](06-ipc.md) — orchestrator:prepare kanalı
