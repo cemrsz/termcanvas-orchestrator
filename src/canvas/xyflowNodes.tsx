@@ -20,6 +20,17 @@ import { panToTerminal } from "../utils/panToTerminal";
 import { type TerminalNodeData, type CanvasFlowNode } from "./nodeProjection";
 import { rectIntersectsCanvasViewport } from "./viewportBounds";
 import { resolveCollisions } from "./collisionResolver";
+import {
+  isAgentTerminalType,
+  useOrchestrationStore,
+} from "../stores/orchestrationStore";
+import {
+  ORCHESTRATOR_COLOR,
+  OrchestrationInPort,
+  OrchestratorOutPort,
+  orchestrationNodeTypes,
+  type SourceFlowNode,
+} from "./orchestrationFlow";
 
 const SNAP_GRID = 10;
 
@@ -67,6 +78,32 @@ function TerminalNode({ data }: NodeProps<TerminalFlowNode>) {
         return project?.worktrees.find((w) => w.id === data.worktreeId) ?? null;
       },
       [data.projectId, data.worktreeId],
+    ),
+  );
+
+  const isOrchestrator = useOrchestrationStore(
+    useCallback(
+      (state) => state.orchestratorIds.includes(data.terminalId),
+      [data.terminalId],
+    ),
+  );
+  const hasOrchestrators = useOrchestrationStore(
+    (state) => state.orchestratorIds.length > 0,
+  );
+  const wiredSummary = useOrchestrationStore(
+    useCallback(
+      (state) => {
+        if (!state.orchestratorIds.includes(data.terminalId)) return "";
+        let agents = 0;
+        let sources = 0;
+        for (const link of state.links) {
+          if (link.orchestratorId !== data.terminalId) continue;
+          if (link.targetKind === "terminal") agents++;
+          else sources++;
+        }
+        return `${agents} agent${agents === 1 ? "" : "s"} · ${sources} source${sources === 1 ? "" : "s"}`;
+      },
+      [data.terminalId],
     ),
   );
 
@@ -238,12 +275,42 @@ function TerminalNode({ data }: NodeProps<TerminalFlowNode>) {
     return null;
   }
 
+  const showInPort =
+    !isOrchestrator && hasOrchestrators && isAgentTerminalType(terminal.type);
+
   return (
     <div
-      className="h-full w-full"
+      className="relative h-full w-full"
+      style={
+        isOrchestrator
+          ? {
+              borderRadius: 6,
+              boxShadow: `0 0 0 2px ${ORCHESTRATOR_COLOR}, 0 0 28px color-mix(in srgb, ${ORCHESTRATOR_COLOR} 30%, transparent)`,
+            }
+          : undefined
+      }
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
+      {isOrchestrator && (
+        <>
+          <div
+            className="tc-caption pointer-events-none absolute left-0 flex items-center gap-1.5 whitespace-nowrap rounded-md px-2 py-0.5 font-medium"
+            style={{
+              // Below the tile: the worktree label owns the space above it.
+              top: "calc(100% + 8px)",
+              color: "var(--accent-foreground)",
+              background: ORCHESTRATOR_COLOR,
+            }}
+          >
+            <span aria-hidden="true">◆</span>
+            ORCHESTRATOR
+            <span style={{ opacity: 0.8 }}>· {wiredSummary}</span>
+          </div>
+          <OrchestratorOutPort />
+        </>
+      )}
+      {showInPort && <OrchestrationInPort color={ORCHESTRATOR_COLOR} />}
       <NodeResizer
         isVisible={hovered}
         minWidth={300}
@@ -273,6 +340,9 @@ function TerminalNode({ data }: NodeProps<TerminalFlowNode>) {
 
 export const xyflowNodeTypes = {
   terminal: TerminalNode,
+  ...orchestrationNodeTypes,
 } satisfies NodeTypes;
+
+export type AnyCanvasFlowNode = CanvasFlowNode | SourceFlowNode;
 
 export type { CanvasFlowNode, TerminalNodeData };

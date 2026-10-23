@@ -18,3 +18,4 @@ ekler; aşağıdaki liste commit sırasıyla aynıdır.
 6. [IPC ve preload](06-ipc.md) — orchestrator:prepare kanalı
 7. [Sahne eylemleri](07-eylemler.md) — orkestratör oluşturma, dönüştürme, manifest
 8. [Kaynak düğümleri ve kablolar](08-dugumler.md) — n8n tarzı kaynak düğümü, portlar, silinebilir kablo
+9. [Terminal portları ve rozet](09-terminal-portlari.md) — orkestratör çerçevesi ve ORCHESTRATOR rozeti
