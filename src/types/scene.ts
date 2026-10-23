@@ -1,5 +1,6 @@
 import type { PersistedProjectData, PersistedStashedTerminal } from "./index";
 import type { BrowserCardData } from "../stores/browserCardStore";
+import type { OrchestrationDocument } from "./orchestration";
 
 export interface ScenePoint {
   x: number;
@@ -104,6 +105,7 @@ export interface SceneDocument {
   browserCards: Record<string, BrowserCardData>;
   annotations: AnnotationElement[];
   stashedTerminals?: PersistedStashedTerminal[];
+  orchestration?: OrchestrationDocument;
 }
 
 export interface SceneRuntime {
