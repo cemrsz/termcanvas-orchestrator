@@ -575,6 +575,21 @@ a.tc-kbd:active {
   will-change: transform;
 }
 
+/* Orchestration wires: dashes flow while the wired agent is producing output. */
+.tc-xyflow .tc-orchestration-edge-busy {
+  stroke-dasharray: 6 6;
+  animation: tc-orchestration-flow 0.6s linear infinite;
+}
+@keyframes tc-orchestration-flow {
+  to {
+    stroke-dashoffset: -12;
+  }
+}
+.tc-xyflow .react-flow__handle.connectingto,
+.tc-xyflow .react-flow__handle.valid {
+  transform: scale(1.35);
+}
+
 .tc-xyflow .react-flow__attribution {
   background: color-mix(in srgb, var(--bg) 82%, transparent);
   border: 1px solid color-mix(in srgb, var(--border) 78%, transparent);
