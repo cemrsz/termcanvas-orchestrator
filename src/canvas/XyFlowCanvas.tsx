@@ -5,6 +5,9 @@ import {
   ReactFlowProvider,
   useNodesState,
   useReactFlow,
+  type Connection,
+  type IsValidConnection,
+  type OnConnect,
   type OnMove,
   type NodeMouseHandler,
   type OnNodeDrag,
@@ -51,7 +54,28 @@ import {
 } from "../terminal/terminalRuntimeStore";
 import { fromFlowViewport, toFlowViewport } from "./viewportAdapter";
 import { buildCanvasFlowNodes } from "./nodeProjection";
-import { xyflowNodeTypes, type CanvasFlowNode } from "./xyflowNodes";
+import {
+  xyflowNodeTypes,
+  type AnyCanvasFlowNode,
+  type CanvasFlowNode,
+} from "./xyflowNodes";
+import {
+  buildOrchestrationEdges,
+  isOrchestrationInHandle,
+  isOrchestratorOutHandle,
+  buildSourceFlowNodes,
+  orchestrationEdgeTypes,
+  sourcesLayoutKey,
+  type OrchestrationFlowEdge,
+} from "./orchestrationFlow";
+import { useOrchestrationStore } from "../stores/orchestrationStore";
+import { useTerminalRuntimeStateStore } from "../stores/terminalRuntimeStateStore";
+import {
+  addOrchestrationSourceInScene,
+  createOrchestratorInScene,
+  refreshOrchestratorWorkspaces,
+} from "../actions/orchestrationSceneActions";
+import type { OrchestrationSourceKind } from "../types/orchestration";
 import {
   getCanvasLeftInset,
   rectIntersectsCanvasViewport,
@@ -65,7 +89,6 @@ import { ContextMenu } from "../components/ContextMenu";
 import { createTerminalInScene } from "../actions/terminalSceneActions";
 import type { TerminalType } from "../types";
 
-const EMPTY_EDGES: never[] = [];
 const WHEEL_ZOOM_SENSITIVITY = 0.005;
 const SNAP_GRID: [number, number] = [10, 10];
 
@@ -381,12 +404,115 @@ function XyFlowCanvasInner() {
     [contextMenu],
   );
 
-  const projectedNodes = useMemo(
-    () => buildCanvasFlowNodes(projects),
-    [layoutKey],
+  const resolveContextWorktree = useCallback(() => {
+    const {
+      focusedProjectId,
+      focusedWorktreeId,
+      projects: currentProjects,
+    } = useProjectStore.getState();
+    if (focusedProjectId && focusedWorktreeId) {
+      return { projectId: focusedProjectId, worktreeId: focusedWorktreeId };
+    }
+    const fallbackProject = currentProjects[0];
+    const fallbackWorktree = fallbackProject?.worktrees[0];
+    if (!fallbackProject || !fallbackWorktree) return null;
+    return { projectId: fallbackProject.id, worktreeId: fallbackWorktree.id };
+  }, []);
+
+  const handleContextMenuOrchestrator = useCallback(() => {
+    if (!contextMenu) return;
+    const target = resolveContextWorktree();
+    if (!target) return;
+    void createOrchestratorInScene({
+      ...target,
+      position: { x: contextMenu.flowX, y: contextMenu.flowY },
+    });
+  }, [contextMenu, resolveContextWorktree]);
+
+  const handleContextMenuSource = useCallback(
+    (kind: OrchestrationSourceKind) => {
+      if (!contextMenu) return;
+      addOrchestrationSourceInScene(kind, {
+        x: contextMenu.flowX,
+        y: contextMenu.flowY,
+      });
+    },
+    [contextMenu],
+  );
+
+  const sources = useOrchestrationStore((state) => state.sources);
+  const links = useOrchestrationStore((state) => state.links);
+  const orchestratorIds = useOrchestrationStore(
+    (state) => state.orchestratorIds,
+  );
+  const sourcesKey = useMemo(() => sourcesLayoutKey(sources), [sources]);
+  const runtimeStates = useTerminalRuntimeStateStore(
+    (state) => state.terminals,
+  );
+
+  // Rewrite each orchestrator's bridge files once per session: the API port
+  // file and the CLI may have changed since they were written.
+  const preparedOrchestratorsRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    const pending = orchestratorIds.filter(
+      (id) => !preparedOrchestratorsRef.current.has(id),
+    );
+    if (pending.length === 0) return;
+    for (const id of pending) preparedOrchestratorsRef.current.add(id);
+    refreshOrchestratorWorkspaces(pending);
+  }, [orchestratorIds]);
+
+  const projectedNodes = useMemo<AnyCanvasFlowNode[]>(
+    () => [
+      ...buildCanvasFlowNodes(projects),
+      ...buildSourceFlowNodes(sources),
+    ],
+    [layoutKey, sourcesKey],
   );
   const [nodes, setNodes, onNodesChange] =
-    useNodesState<CanvasFlowNode>(projectedNodes);
+    useNodesState<AnyCanvasFlowNode>(projectedNodes);
+
+  const edges = useMemo(() => {
+    const terminalRects = new Map<string, { x: number; y: number; w: number }>();
+    const busyTerminalIds = new Set<string>();
+    for (const project of projects) {
+      for (const worktree of project.worktrees) {
+        for (const terminal of worktree.terminals) {
+          if (terminal.stashed) continue;
+          terminalRects.set(terminal.id, {
+            x: terminal.x,
+            y: terminal.y,
+            w: terminal.width,
+          });
+          if (runtimeStates[terminal.id]?.status === "active") {
+            busyTerminalIds.add(terminal.id);
+          }
+        }
+      }
+    }
+    return buildOrchestrationEdges({
+      links,
+      orchestratorIds,
+      sources,
+      terminalRects,
+      busyTerminalIds,
+    });
+  }, [links, orchestratorIds, projects, runtimeStates, sources]);
+
+  const isValidConnection = useCallback<IsValidConnection>((connection) => {
+    const state = useOrchestrationStore.getState();
+    if (!isOrchestratorOutHandle(connection.sourceHandle)) return false;
+    if (!isOrchestrationInHandle(connection.targetHandle)) return false;
+    if (!state.orchestratorIds.includes(connection.source)) return false;
+    if (connection.source === connection.target) return false;
+    return !state.orchestratorIds.includes(connection.target);
+  }, []);
+
+  const handleConnect = useCallback<OnConnect>((connection: Connection) => {
+    const state = useOrchestrationStore.getState();
+    const targetKind = state.sources[connection.target] ? "source" : "terminal";
+    state.connect(connection.source, targetKind, connection.target);
+  }, []);
 
   useEffect(() => {
     setNodes(projectedNodes);
@@ -400,7 +526,7 @@ function XyFlowCanvasInner() {
   );
 
   const handleInit = useCallback(
-    (reactFlow: ReactFlowInstance<CanvasFlowNode>) => {
+    (reactFlow: ReactFlowInstance<AnyCanvasFlowNode, OrchestrationFlowEdge>) => {
       useCanvasStore.getState().registerViewportAdapter({
         setViewport: (nextViewport, options) => {
           void reactFlow.setViewport(
@@ -465,8 +591,9 @@ function XyFlowCanvasInner() {
     clearSceneFocusAndSelection();
   }, []);
 
-  const handleNodeClick = useCallback<NodeMouseHandler<CanvasFlowNode>>(
+  const handleNodeClick = useCallback<NodeMouseHandler<AnyCanvasFlowNode>>(
     (_event, node) => {
+      if (node.type !== "terminal") return;
       // Space-held panning is a transient override on top of whatever
       // tool is active — a click that lands while Space is down is the
       // tail of a pan gesture, so suppress the activate. Persistent
@@ -475,24 +602,31 @@ function XyFlowCanvasInner() {
       // this distinction the now-default Hand tool can't focus a
       // worktree by clicking, which made the canvas feel inert.
       if (spaceHeld) return;
-      const { projectId, worktreeId } = node.data;
+      const { projectId, worktreeId } = (node as CanvasFlowNode).data;
       useProjectStore.getState().setFocusedWorktree(projectId, worktreeId);
     },
     [spaceHeld],
   );
 
-  const handleNodeDragStart = useCallback<OnNodeDrag<CanvasFlowNode>>(() => {
+  const handleNodeDragStart = useCallback<OnNodeDrag<AnyCanvasFlowNode>>(() => {
     // No-op in flat canvas — no bringToFront needed
   }, []);
 
-  const handleNodeDragStop = useCallback<OnNodeDrag<CanvasFlowNode>>(
+  const handleNodeDragStop = useCallback<OnNodeDrag<AnyCanvasFlowNode>>(
     (_event, node) => {
-      // Write terminal position back to store
-      const { projectId, worktreeId, terminalId } = node.data;
       const snappedX =
         Math.round(node.position.x / SNAP_GRID[0]) * SNAP_GRID[0];
       const snappedY =
         Math.round(node.position.y / SNAP_GRID[1]) * SNAP_GRID[1];
+      if (node.type === "orchestrationSource") {
+        useOrchestrationStore
+          .getState()
+          .updateSource(node.id, { x: snappedX, y: snappedY });
+        return;
+      }
+      // Write terminal position back to store
+      const { projectId, worktreeId, terminalId } = (node as CanvasFlowNode)
+        .data;
       useProjectStore
         .getState()
         .updateTerminalPosition(
@@ -721,8 +855,12 @@ function XyFlowCanvasInner() {
         }}
         defaultViewport={toFlowViewport(viewport)}
         nodes={nodes}
-        edges={EMPTY_EDGES}
+        edges={edges}
         nodeTypes={xyflowNodeTypes}
+        edgeTypes={orchestrationEdgeTypes}
+        onConnect={handleConnect}
+        isValidConnection={isValidConnection}
+        connectionLineStyle={{ stroke: "var(--purple)", strokeWidth: 2 }}
         onInit={handleInit}
         onNodesChange={onNodesChange}
         onMove={handleMove}
@@ -732,7 +870,7 @@ function XyFlowCanvasInner() {
         onNodeClick={handleNodeClick}
         onNodeDragStart={handleNodeDragStart}
         onNodeDragStop={handleNodeDragStop}
-        nodesConnectable={false}
+        nodesConnectable
         nodesDraggable={!isPanMode}
         nodesFocusable={false}
         edgesFocusable={false}
@@ -790,6 +928,31 @@ function XyFlowCanvasInner() {
             {
               label: "New Lazygit",
               onClick: () => handleContextMenuPick("lazygit"),
+            },
+            { type: "separator" },
+            {
+              label: "New Orchestrator",
+              onClick: handleContextMenuOrchestrator,
+            },
+            {
+              label: "Add Google Sheet",
+              onClick: () => handleContextMenuSource("sheet"),
+            },
+            {
+              label: "Add n8n Webhook",
+              onClick: () => handleContextMenuSource("n8n"),
+            },
+            {
+              label: "Add HTTP API",
+              onClick: () => handleContextMenuSource("api"),
+            },
+            {
+              label: "Add Local File",
+              onClick: () => handleContextMenuSource("file"),
+            },
+            {
+              label: "Add Note",
+              onClick: () => handleContextMenuSource("note"),
             },
           ]}
           onClose={() => setContextMenu(null)}
