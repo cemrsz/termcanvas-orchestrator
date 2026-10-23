@@ -51,6 +51,10 @@ import { Hub } from "./components/Hub";
 import { CanvasManagerModal } from "./components/CanvasManagerModal";
 import { updateWindowTitle } from "./titleHelper";
 import { resolveTerminalWithRuntimeState } from "./stores/terminalRuntimeStateStore";
+import {
+  buildOrchestratorManifest,
+  listOrchestrators,
+} from "./actions/orchestrationSceneActions";
 import { logSlowRendererPath } from "./utils/devPerf";
 import { selectAllTerminalRuntime } from "./terminal/terminalRuntimeStore";
 import { performContextualSelectAll } from "./utils/contextualSelectAll";
@@ -444,6 +448,11 @@ export function App() {
         }
         throw new Error("Terminal not found");
       },
+
+      listOrchestrators: () => JSON.parse(JSON.stringify(listOrchestrators())),
+
+      getOrchestratorManifest: (orchestratorId: string) =>
+        JSON.parse(JSON.stringify(buildOrchestratorManifest(orchestratorId))),
     };
 
     (window as any).__tcApi = api;
