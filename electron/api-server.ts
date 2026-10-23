@@ -15,6 +15,13 @@ import { PinStore, PinStoreError } from "./pin-store";
 import { resolveCanvasProjectRoot } from "./pin-project-resolver";
 import { renderPinToPng } from "./pin-render";
 import { cleanupPinRenderCache } from "./pin-render-utils";
+import {
+  createDefaultComposerSubmitDeps,
+  submitComposerRequest,
+} from "./composer-submit";
+import { extractLastAssistantReply, stripAnsi } from "./orchestrator-bridge";
+import type { OrchestratorManifest } from "../src/types/orchestration";
+import type { TerminalType } from "../src/types";
 
 interface ApiServerDeps {
   getWindow: () => BrowserWindow | null;
@@ -191,6 +198,26 @@ export class ApiServer {
     if (method === "DELETE" && pathname.match(/^\/pin\/[^/]+$/)) {
       const id = pathname.split("/")[2];
       return this.pinRemove(url, id);
+    }
+
+    if (method === "GET" && pathname === "/orchestrator/list") {
+      return this.execRenderer(`window.__tcApi.listOrchestrators()`);
+    }
+    if (method === "GET" && pathname.match(/^\/orchestrator\/[^/]+$/)) {
+      const id = decodeURIComponent(pathname.split("/")[2]);
+      return this.orchestratorManifest(id);
+    }
+    if (method === "GET" && pathname.match(/^\/orchestrator\/[^/]+\/agent$/)) {
+      const id = decodeURIComponent(pathname.split("/")[2]);
+      return this.orchestratorAgent(id, url.searchParams.get("agent"));
+    }
+    if (method === "POST" && pathname.match(/^\/orchestrator\/[^/]+\/send$/)) {
+      const id = decodeURIComponent(pathname.split("/")[2]);
+      return this.orchestratorSend(id, body);
+    }
+    if (method === "GET" && pathname.match(/^\/orchestrator\/[^/]+\/reply$/)) {
+      const id = decodeURIComponent(pathname.split("/")[2]);
+      return this.orchestratorReply(id, url.searchParams.get("agent"));
     }
 
     throw Object.assign(new Error("Not found"), { status: 404 });
@@ -581,6 +608,145 @@ export class ApiServer {
 
   private async getState() {
     return this.execRenderer(`window.__tcApi.getProjects()`);
+  }
+
+  private async loadOrchestratorManifest(
+    orchestratorId: string,
+  ): Promise<OrchestratorManifest> {
+    const manifest = (await this.execRenderer(
+      `window.__tcApi.getOrchestratorManifest(${JSON.stringify(orchestratorId)})`,
+    )) as OrchestratorManifest | null;
+    if (!manifest) {
+      throw Object.assign(new Error("Orchestrator not found on canvas"), {
+        status: 404,
+      });
+    }
+    return manifest;
+  }
+
+  private withTelemetry(agent: OrchestratorManifest["agents"][number]) {
+    const snapshot = this.deps.telemetryService.getTerminalSnapshot(agent.id);
+    return {
+      ...agent,
+      turnState: snapshot?.turn_state ?? null,
+      turnStartedAt: snapshot?.turn_started_at ?? null,
+      lastOutputAt: snapshot?.last_output_at ?? null,
+      derivedStatus: snapshot?.derived_status ?? null,
+    };
+  }
+
+  /**
+   * Resolve an agent reference (1-based number, id, or name) against the
+   * agents wired to this orchestrator. Unwired terminals never resolve.
+   */
+  private resolveOrchestratorAgent(
+    manifest: OrchestratorManifest,
+    ref: string | null | undefined,
+  ) {
+    const agents = manifest.agents;
+    const value = (ref ?? "").trim();
+    if (!value) {
+      throw Object.assign(new Error("agent is required"), { status: 400 });
+    }
+    if (/^\d+$/.test(value)) {
+      const byIndex = agents[parseInt(value, 10) - 1];
+      if (byIndex) return byIndex;
+    }
+    const lower = value.toLowerCase();
+    const exact = agents.filter(
+      (agent) => agent.id === value || agent.name.toLowerCase() === lower,
+    );
+    if (exact.length === 1) return exact[0];
+    const partial = agents.filter((agent) =>
+      agent.name.toLowerCase().includes(lower),
+    );
+    if (exact.length === 0 && partial.length === 1) return partial[0];
+    const wired =
+      agents.map((agent, i) => `${i + 1}. ${agent.name}`).join(", ") || "none";
+    throw Object.assign(
+      new Error(
+        `No single wired agent matches '${value}'. Wired agents: ${wired}`,
+      ),
+      { status: 404 },
+    );
+  }
+
+  private async orchestratorManifest(orchestratorId: string) {
+    const manifest = await this.loadOrchestratorManifest(orchestratorId);
+    return {
+      ...manifest,
+      agents: manifest.agents.map((agent) => this.withTelemetry(agent)),
+    };
+  }
+
+  private async orchestratorAgent(orchestratorId: string, ref: string | null) {
+    const manifest = await this.loadOrchestratorManifest(orchestratorId);
+    const agent = this.resolveOrchestratorAgent(manifest, ref);
+    return { agent: this.withTelemetry(agent) };
+  }
+
+  private async orchestratorSend(orchestratorId: string, body: any) {
+    const text = body?.text;
+    if (typeof text !== "string" || text.trim().length === 0) {
+      throw Object.assign(new Error("text is required"), { status: 400 });
+    }
+    const manifest = await this.loadOrchestratorManifest(orchestratorId);
+    const agent = this.resolveOrchestratorAgent(manifest, body?.agent);
+    if (!agent.ptyId || !this.deps.ptyManager.getPid(agent.ptyId)) {
+      throw Object.assign(
+        new Error(`${agent.name} is not running on the canvas`),
+        { status: 409 },
+      );
+    }
+
+    const result = await submitComposerRequest(
+      {
+        terminalId: agent.id,
+        ptyId: agent.ptyId,
+        terminalType: agent.type as TerminalType,
+        worktreePath: agent.worktreePath,
+        text,
+        images: [],
+      },
+      createDefaultComposerSubmitDeps(
+        process.platform as "darwin" | "win32" | "linux",
+        () => {
+          throw new Error("Images are not supported over the orchestrator API");
+        },
+        (ptyId, data) => this.deps.ptyManager.write(ptyId, data),
+      ),
+    );
+    if (!result.ok) {
+      throw Object.assign(
+        new Error(result.detail ?? result.error ?? "Send failed"),
+        { status: 500 },
+      );
+    }
+    return { ok: true, agent: { id: agent.id, name: agent.name } };
+  }
+
+  private async orchestratorReply(orchestratorId: string, ref: string | null) {
+    const manifest = await this.loadOrchestratorManifest(orchestratorId);
+    const agent = this.withTelemetry(
+      this.resolveOrchestratorAgent(manifest, ref),
+    );
+    const sessionFile =
+      this.deps.telemetryService.getTerminalSnapshot(agent.id)?.session_file;
+    const sessionReply = sessionFile
+      ? extractLastAssistantReply(sessionFile)
+      : null;
+    if (sessionReply) {
+      return { agent, source: "session", reply: sessionReply };
+    }
+    // No transcript (e.g. a shell worker): fall back to the screen buffer.
+    const lines = agent.ptyId
+      ? this.deps.ptyManager.getOutput(agent.ptyId, 80)
+      : [];
+    return {
+      agent,
+      source: "terminal",
+      reply: stripAnsi(lines.join("\n")).trim(),
+    };
   }
 
   private async pinList(url: URL) {
