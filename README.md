@@ -1,3 +1,5 @@
+> **Bu fork'ta:** n8n tarzı bir orkestratör agent eklendi. Tek agent'a komut verirsin; o, canvas'ta kabloyla bağlı agent'lara iş dağıtır ve bağlı kaynakları (Google Sheet, n8n webhook, API, dosya, not) kullanır. Kullanım ve 15 adımlık değişiklik günlüğü: [docs/orchestrator](docs/orchestrator/README.md)
+
 <div align="center">
 
 <img src="docs/icon.png" width="128" alt="TermCanvas app icon" />

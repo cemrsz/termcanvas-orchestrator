@@ -24,3 +24,41 @@ ekler; aşağıdaki liste commit sırasıyla aynıdır.
 12. [Düzeltme: Claude oturum yolu](12-oturum-yolu.md) — boşluk, _ ve Türkçe harfli klasörlerde oturum dosyası bulunamıyordu
 13. [Düzeltme: agent isimleri korunuyor](13-isimler.md) — bağlı agent'ların rol adları yeniden başlatmada silinmiyor
 14. [Düzeltme: tarayıcı kartı sürükleme](14-tarayici-karti.md) — n8n kartı gibi tarayıcı kartları taşınamıyordu
+15. [n8n okuma webhook'u ve kılavuz](15-n8n-ve-kilavuz.md) — özel Sheet'i n8n üzerinden okuma, kullanım kılavuzu
+
+## Nasıl kullanılır
+
+1. Boş canvas'a sağ tıkla → **New Orchestrator**. Projedeki agent terminalleri
+   (Claude, Codex, …) otomatik olarak ona bağlanır.
+2. Agent'lara başlıklarından rol adı ver (ör. "Copywriter"). Orkestratör işi bu
+   isimlere bakarak dağıtır; isimler yeniden başlatmada korunur.
+3. Kaynak eklemek için sağ tık → **Add Google Sheet / n8n Webhook / HTTP API /
+   Local File / Note**, sonra düğümün adresini ve notunu doldur. Tek orkestratör
+   varsa yeni kaynak ona otomatik bağlanır.
+4. Kablo çekmek için orkestratörün kenarındaki noktadan bir agent'a ya da kaynağa
+   sürükle; kesmek için kablonun ortasındaki × işaretine tıkla. Terminal başlığına
+   sağ tıklayınca *Connect / Disconnect / Make Orchestrator* da var.
+5. Komutu sadece orkestratörün terminaline yaz.
+
+Orkestratör, projenin içindeki `.termcanvas/orchestrator/<id>/tc.mjs` aracını
+kullanır:
+
+| Komut | Ne yapar |
+| --- | --- |
+| `status` | Bağlı agent'ları ve kaynakları listeler |
+| `send <agent> <metin>` / `--file` | Agent'a görev yollar |
+| `wait <agent>` | Agent'ın turu bitene kadar bekler, cevabını yazar |
+| `ask <agent> <metin>` | `send` + `wait` |
+| `reply <agent>` | Son cevabı tekrar gösterir |
+| `source <kaynak> [--query]` | Kaynağı okur (Sheet → CSV, n8n/API → GET, dosya, not) |
+| `trigger <kaynak> --data '<json>'` | n8n/API kaynağına POST atar (eylem) |
+
+Notlar:
+
+- Google Sheet doğrudan CSV olarak okunur; bunun için "bağlantıya sahip olan
+  herkes görüntüleyebilir" paylaşımı gerekir. Özel Sheet için
+  [`integrations/n8n`](../../integrations/n8n/build-leads-webhook.mjs) ile bir
+  okuma webhook'u kur ve onu **n8n Webhook** kaynağı olarak bağla (bkz. not 15).
+- Orkestratör yalnızca kabloyla bağlı agent'lara iş gönderebilir.
+- Dış dünyayı değiştiren `trigger` çağrılarını yalnızca komut bunu açıkça
+  istediğinde yapacak şekilde talimatlandırılmıştır.
