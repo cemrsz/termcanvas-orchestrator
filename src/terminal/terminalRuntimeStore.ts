@@ -65,6 +65,7 @@ import {
   WORKTREE_ACTIVITY_THROTTLE_MS,
 } from "../../shared/lifecycleThresholds";
 import { onTerminalTurnCompleted } from "./summaryScheduler";
+import { isOrchestratedTerminal } from "../stores/orchestrationStore";
 import {
   clampPreviewAnsi,
   resolveTerminalMountMode,
@@ -484,7 +485,14 @@ function setSessionId(
     .getState()
     .setSessionId(runtime.meta.terminal.id, sessionId);
 
-  if (prev && prev !== sessionId && runtime.meta.terminal.customTitle) {
+  // A new session makes a summary title stale, but an orchestrated agent's
+  // title is its role name and must survive restarts.
+  if (
+    prev &&
+    prev !== sessionId &&
+    runtime.meta.terminal.customTitle &&
+    !isOrchestratedTerminal(runtime.meta.terminal.id)
+  ) {
     store.updateTerminalCustomTitle(
       runtime.meta.projectId,
       runtime.meta.worktreeId,

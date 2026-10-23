@@ -6,6 +6,7 @@ import { usePreferencesStore } from "../stores/preferencesStore";
 import { useNotificationStore } from "../stores/notificationStore";
 import { useLocaleStore } from "../stores/localeStore";
 import { resolveTerminalWithRuntimeState } from "../stores/terminalRuntimeStateStore";
+import { isOrchestratedTerminal } from "../stores/orchestrationStore";
 import {
   AUTO_SUMMARY_SWEEP_MS,
   TURN_COMPLETE_SUMMARY_DEBOUNCE_MS,
@@ -179,6 +180,8 @@ export function onTerminalTurnCompleted(terminalId: string): void {
         if (!liveTerminal.sessionId) return;
         if (liveTerminal.origin === "agent") return;
         if (liveTerminal.focused) return;
+        // Auto summaries must not rename an orchestrated agent's role name.
+        if (isOrchestratedTerminal(liveTerminal.id)) return;
         if (
           liveTerminal.customTitle &&
           lastSummarySessionSize.has(liveTerminal.id)
@@ -219,6 +222,7 @@ export function startAutoSummaryWatcher(): () => void {
           if (!liveTerminal.sessionId) continue;
           if (liveTerminal.origin === "agent") continue;
           if (liveTerminal.focused) continue;
+          if (isOrchestratedTerminal(liveTerminal.id)) continue;
           if (
             liveTerminal.status === "running" ||
             liveTerminal.status === "active"
