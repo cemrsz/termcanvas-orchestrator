@@ -11,3 +11,4 @@ ekler; aşağıdaki liste commit sırasıyla aynıdır.
 ## Commit günlüğü
 
 1. [Veri modeli](01-veri-modeli.md) — orkestrasyon grafiğinin tipleri
+2. [Orkestrasyon store'u](02-store.md) — orkestratörler, kaynaklar ve kablolar için zustand store
