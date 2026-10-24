@@ -9,9 +9,10 @@ export interface ContextMenuTarget {
 
 /**
  * Where a canvas menu action that needs a folder (a team, an orchestrator)
- * goes: the focused worktree, or else every worktree on the canvas. The menu
- * names each one, so nothing lands silently in the first project — a click
- * on empty canvas clears the focus, and that used to happen unnoticed.
+ * can go: every worktree on the canvas, the focused one first. The menu
+ * names each one, so nothing lands silently in a project the user did not
+ * mean — focus is easy to lose (a click on empty canvas) and easy to keep
+ * by accident (it stays on a project after its terminals are closed).
  */
 export function contextMenuTargets(
   projects: ProjectData[],
@@ -28,10 +29,8 @@ export function contextMenuTargets(
           : project.name,
     })),
   );
-  const focused = all.find(
-    (target) =>
-      target.projectId === focusedProjectId &&
-      target.worktreeId === focusedWorktreeId,
-  );
-  return focused ? [focused] : all;
+  const isFocused = (target: ContextMenuTarget) =>
+    target.projectId === focusedProjectId &&
+    target.worktreeId === focusedWorktreeId;
+  return [...all.filter(isFocused), ...all.filter((target) => !isFocused(target))];
 }

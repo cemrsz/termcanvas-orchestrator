@@ -23,10 +23,17 @@ const projects = [
   project("p2", "ekip", ["master", "feature"]),
 ];
 
-test("the focused worktree is the only target", () => {
-  assert.deepEqual(contextMenuTargets(projects, "p2", "p2:feature"), [
-    { projectId: "p2", worktreeId: "p2:feature", label: "ekip / feature" },
-  ]);
+test("the focused worktree comes first and the others stay on offer", () => {
+  assert.deepEqual(
+    contextMenuTargets(projects, "p1", "p1:master").map((target) => target.label),
+    ["Coldmalil", "ekip / master", "ekip / feature"],
+  );
+  assert.deepEqual(contextMenuTargets(projects, "p2", "p2:feature")[0], {
+    projectId: "p2",
+    worktreeId: "p2:feature",
+    label: "ekip / feature",
+  });
+  assert.equal(contextMenuTargets(projects, "p2", "p2:feature").length, 3);
 });
 
 test("without focus every worktree is offered, never just the first project", () => {
