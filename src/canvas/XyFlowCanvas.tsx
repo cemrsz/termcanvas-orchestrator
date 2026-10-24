@@ -42,6 +42,10 @@ import { CanvasCardLayer } from "./CanvasCardLayer";
 import { DrawingLayer } from "./DrawingLayer";
 import { PetOverlay } from "../pet/PetOverlay";
 import { useBoxSelect } from "../hooks/useBoxSelect";
+import {
+  contextMenuTargets,
+  type ContextMenuTarget,
+} from "./contextMenuTargets";
 import { useTrackpadSwipeFocus } from "./trackpadSwipeFocus";
 import {
   publishTerminalGeometry,
@@ -412,43 +416,36 @@ function XyFlowCanvasInner() {
     [contextMenu],
   );
 
-  const resolveContextWorktree = useCallback(() => {
-    const {
-      focusedProjectId,
-      focusedWorktreeId,
-      projects: currentProjects,
-    } = useProjectStore.getState();
-    if (focusedProjectId && focusedWorktreeId) {
-      return { projectId: focusedProjectId, worktreeId: focusedWorktreeId };
-    }
-    const fallbackProject = currentProjects[0];
-    const fallbackWorktree = fallbackProject?.worktrees[0];
-    if (!fallbackProject || !fallbackWorktree) return null;
-    return { projectId: fallbackProject.id, worktreeId: fallbackWorktree.id };
-  }, []);
+  const focusedProjectId = useProjectStore((state) => state.focusedProjectId);
+  const focusedWorktreeId = useProjectStore((state) => state.focusedWorktreeId);
+  const menuTargets = useMemo(
+    () => contextMenuTargets(projects, focusedProjectId, focusedWorktreeId),
+    [projects, focusedProjectId, focusedWorktreeId],
+  );
 
-  const handleContextMenuOrchestrator = useCallback(() => {
-    if (!contextMenu) return;
-    const target = resolveContextWorktree();
-    if (!target) return;
-    void createOrchestratorInScene({
-      ...target,
-      position: { x: contextMenu.flowX, y: contextMenu.flowY },
-    });
-  }, [contextMenu, resolveContextWorktree]);
+  const handleContextMenuOrchestrator = useCallback(
+    (target: ContextMenuTarget) => {
+      if (!contextMenu) return;
+      void createOrchestratorInScene({
+        projectId: target.projectId,
+        worktreeId: target.worktreeId,
+        position: { x: contextMenu.flowX, y: contextMenu.flowY },
+      });
+    },
+    [contextMenu],
+  );
 
   const handleContextMenuTeam = useCallback(
-    (template: TeamTemplate) => {
+    (template: TeamTemplate, target: ContextMenuTarget) => {
       if (!contextMenu) return;
-      const target = resolveContextWorktree();
-      if (!target) return;
       void createTeamInScene({
-        ...target,
+        projectId: target.projectId,
+        worktreeId: target.worktreeId,
         position: { x: contextMenu.flowX, y: contextMenu.flowY },
         template,
       });
     },
-    [contextMenu, resolveContextWorktree],
+    [contextMenu],
   );
 
   const handleContextMenuSource = useCallback(
@@ -960,18 +957,20 @@ function XyFlowCanvasInner() {
               onClick: () => handleContextMenuPick("lazygit"),
             },
             { type: "separator" },
-            {
-              label: "New Team (1 Opus · 4 Sonnet · 20 Haiku)",
-              onClick: () => handleContextMenuTeam(FULL_TEAM),
-            },
-            {
-              label: "New Small Team (1 Opus · 2 Sonnet · 6 Haiku)",
-              onClick: () => handleContextMenuTeam(SMALL_TEAM),
-            },
-            {
-              label: "New Orchestrator",
-              onClick: handleContextMenuOrchestrator,
-            },
+            ...menuTargets.flatMap((target) => [
+              {
+                label: `New Team in ${target.label} (1 Opus · 4 Sonnet · 20 Haiku)`,
+                onClick: () => handleContextMenuTeam(FULL_TEAM, target),
+              },
+              {
+                label: `New Small Team in ${target.label} (1 Opus · 2 Sonnet · 6 Haiku)`,
+                onClick: () => handleContextMenuTeam(SMALL_TEAM, target),
+              },
+            ]),
+            ...menuTargets.map((target) => ({
+              label: `New Orchestrator in ${target.label}`,
+              onClick: () => handleContextMenuOrchestrator(target),
+            })),
             {
               label: "Add Google Sheet",
               onClick: () => handleContextMenuSource("sheet"),

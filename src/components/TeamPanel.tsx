@@ -39,7 +39,7 @@ const STRINGS: Record<TeamLang, Record<string, string>> = {
     tools: "Araç adımları",
     empty: "Henüz bir ekip yok.",
     emptyHint:
-      "Kanvasa sağ tıkla → “New Team (1 Opus · 4 Sonnet · 20 Haiku)” ya da “New Orchestrator”. Agent'lar kablolarla bağlandıkça burada ne yaptıklarını anlatırlar.",
+      "Kanvasa sağ tıkla → “New Team in <proje> (1 Opus · 4 Sonnet · 20 Haiku)” ya da “New Orchestrator in <proje>”. Agent'lar kablolarla bağlandıkça burada ne yaptıklarını anlatırlar.",
     noActivity: "Henüz etkinlik yok. Lidere bir komut yaz; ekip çalışmaya başlayınca burada görünür.",
     openReport: "Raporu aç",
     close: "Kapat",
@@ -63,7 +63,7 @@ const STRINGS: Record<TeamLang, Record<string, string>> = {
     tools: "Tool steps",
     empty: "No team yet.",
     emptyHint:
-      "Right-click the canvas → “New Team (1 Opus · 4 Sonnet · 20 Haiku)” or “New Orchestrator”. As agents are wired together they narrate what they do here.",
+      "Right-click the canvas → “New Team in <project> (1 Opus · 4 Sonnet · 20 Haiku)” or “New Orchestrator in <project>”. As agents are wired together they narrate what they do here.",
     noActivity: "No activity yet. Give the lead a command; the team's work shows up here.",
     openReport: "Open report",
     close: "Close",
