@@ -66,6 +66,43 @@ const TERMCANVAS_RUNTIME_ENV_BLOCKLIST = new Set([
   "TERMCANVAS_PORT_FILE",
 ]);
 
+// A Claude Code session marks the processes it starts with CLAUDECODE and a
+// set of session variables. When TermCanvas itself runs under one (e.g. a
+// Claude session ran `pnpm dev`), its agents inherited them, started as child
+// sessions of that session, wrote no transcripts (so --resume never worked)
+// and lost their host when it ended.
+const CLAUDE_SESSION_MARKER = "CLAUDECODE";
+const CLAUDE_SESSION_ENV_KEYS = new Set([
+  CLAUDE_SESSION_MARKER,
+  "CLAUDE_PID",
+  "CLAUDE_PROJECT_DIR",
+]);
+const CLAUDE_SESSION_ENV_PREFIXES = ["CLAUDE_CODE_", "CLAUDE_AGENT_SDK_"] as const;
+/** User settings that share the prefix; they configure Claude, not a session. */
+const CLAUDE_CONFIG_ENV_KEYS = new Set([
+  "CLAUDE_CODE_USE_BEDROCK",
+  "CLAUDE_CODE_USE_VERTEX",
+  "CLAUDE_CODE_SKIP_BEDROCK_AUTH",
+  "CLAUDE_CODE_SKIP_VERTEX_AUTH",
+  "CLAUDE_CODE_GIT_BASH_PATH",
+  "CLAUDE_CODE_MAX_OUTPUT_TOKENS",
+  "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC",
+  "CLAUDE_CODE_API_KEY_HELPER_TTL_MS",
+]);
+
+function stripInheritedClaudeSession(env: Record<string, string>): void {
+  if (!(CLAUDE_SESSION_MARKER in env)) return;
+  for (const key of Object.keys(env)) {
+    if (CLAUDE_CONFIG_ENV_KEYS.has(key)) continue;
+    if (
+      CLAUDE_SESSION_ENV_KEYS.has(key) ||
+      CLAUDE_SESSION_ENV_PREFIXES.some((prefix) => key.startsWith(prefix))
+    ) {
+      delete env[key];
+    }
+  }
+}
+
 function getEnvVarCaseInsensitive(
   env: Record<string, string | undefined>,
   key: string,
@@ -181,6 +218,7 @@ export function sanitizeEnv(
   for (const key of TERMCANVAS_RUNTIME_ENV_BLOCKLIST) {
     delete cleaned[key];
   }
+  stripInheritedClaudeSession(cleaned);
 
   cleaned.PATH = mergePathValue(
     getEnvVarCaseInsensitive(env, "PATH"),

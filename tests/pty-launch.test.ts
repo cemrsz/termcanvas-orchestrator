@@ -120,6 +120,55 @@ test("sanitizeEnv strips inherited TermCanvas runtime identity", () => {
   assert.ok(!("TERMCANVAS_PORT_FILE" in env));
 });
 
+test("sanitizeEnv strips a parent Claude Code session but keeps Claude settings", () => {
+  const env = sanitizeEnv(
+    {
+      HOME: "/Users/test",
+      PATH: "/custom/bin",
+      ANTHROPIC_BASE_URL: "https://proxy.example",
+      CLAUDECODE: "1",
+      CLAUDE_CODE_CHILD_SESSION: "1",
+      CLAUDE_CODE_SESSION_ID: "parent-session",
+      CLAUDE_CODE_ENTRYPOINT: "claude-desktop",
+      CLAUDE_AGENT_SDK_VERSION: "1.0.0",
+      CLAUDE_PID: "1234",
+      CLAUDE_PROJECT_DIR: "/Users/test/other",
+      CLAUDE_CODE_USE_BEDROCK: "1",
+      CLAUDE_CODE_GIT_BASH_PATH: "C:\\Git\\bin\\bash.exe",
+    },
+    createDeps(),
+  );
+
+  for (const key of [
+    "CLAUDECODE",
+    "CLAUDE_CODE_CHILD_SESSION",
+    "CLAUDE_CODE_SESSION_ID",
+    "CLAUDE_CODE_ENTRYPOINT",
+    "CLAUDE_AGENT_SDK_VERSION",
+    "CLAUDE_PID",
+    "CLAUDE_PROJECT_DIR",
+  ]) {
+    assert.ok(!(key in env), key);
+  }
+  assert.equal(env.CLAUDE_CODE_USE_BEDROCK, "1");
+  assert.equal(env.CLAUDE_CODE_GIT_BASH_PATH, "C:\\Git\\bin\\bash.exe");
+  assert.equal(env.ANTHROPIC_BASE_URL, "https://proxy.example");
+  assert.equal(env.HOME, "/Users/test");
+});
+
+test("sanitizeEnv leaves CLAUDE_CODE_ settings alone outside a Claude session", () => {
+  const env = sanitizeEnv(
+    {
+      HOME: "/Users/test",
+      PATH: "/custom/bin",
+      CLAUDE_CODE_DISABLE_TERMINAL_TITLE: "1",
+    },
+    createDeps(),
+  );
+
+  assert.equal(env.CLAUDE_CODE_DISABLE_TERMINAL_TITLE, "1");
+});
+
 test("sanitizeEnv reads Windows Path variables case-insensitively and appends common user bins", () => {
   const env = sanitizeEnv(
     {
