@@ -68,6 +68,7 @@ import {
   removeOrchestratorRole,
 } from "../actions/orchestrationSceneActions";
 import type { MenuItem } from "../components/ContextMenu";
+import { wouldCreateCycle } from "../../shared/team";
 
 interface Props {
   lodMode: TerminalMountMode;
@@ -203,45 +204,56 @@ export function TerminalTile({
   );
   const orchestrationLinks = useOrchestrationStore((state) => state.links);
   const isOrchestrator = orchestratorIds.includes(terminal.id);
+  const otherOrchestratorIds = orchestratorIds.filter(
+    (orchestratorId) => orchestratorId !== terminal.id,
+  );
   const orchestrationMenuItems: MenuItem[] = !isAgentTerminalType(terminal.type)
     ? []
-    : isOrchestrator
-      ? [
-          { type: "separator" },
-          {
-            label: "Remove Orchestrator Role",
-            onClick: () => removeOrchestratorRole(terminal.id),
-          },
-        ]
-      : [
-          { type: "separator" },
-          ...orchestratorIds.map((orchestratorId, index): MenuItem => {
-            const link = orchestrationLinks.find(
-              (candidate) =>
-                candidate.orchestratorId === orchestratorId &&
-                candidate.targetKind === "terminal" &&
-                candidate.targetId === terminal.id,
-            );
-            const suffix = orchestratorIds.length > 1 ? ` #${index + 1}` : "";
-            return link
-              ? {
-                  label: `Disconnect from Orchestrator${suffix}`,
-                  onClick: () =>
-                    useOrchestrationStore.getState().disconnect(link.id),
-                }
-              : {
-                  label: `Connect to Orchestrator${suffix}`,
-                  onClick: () =>
-                    useOrchestrationStore
-                      .getState()
-                      .connect(orchestratorId, "terminal", terminal.id),
-                };
-          }),
-          {
-            label: "Make Orchestrator",
-            onClick: () => void makeTerminalOrchestrator(terminal.id),
-          },
-        ];
+    : [
+        { type: "separator" },
+        // Any agent, orchestrators included, can report to an orchestrator:
+        // that is how lead -> managers -> workers hierarchies are wired.
+        ...otherOrchestratorIds.flatMap((orchestratorId): MenuItem[] => {
+          const index = orchestratorIds.indexOf(orchestratorId);
+          const link = orchestrationLinks.find(
+            (candidate) =>
+              candidate.orchestratorId === orchestratorId &&
+              candidate.targetKind === "terminal" &&
+              candidate.targetId === terminal.id,
+          );
+          const suffix = orchestratorIds.length > 1 ? ` #${index + 1}` : "";
+          if (link) {
+            return [
+              {
+                label: `Disconnect from Orchestrator${suffix}`,
+                onClick: () =>
+                  useOrchestrationStore.getState().disconnect(link.id),
+              },
+            ];
+          }
+          if (wouldCreateCycle(orchestrationLinks, orchestratorId, terminal.id)) {
+            return [];
+          }
+          return [
+            {
+              label: `Connect to Orchestrator${suffix}`,
+              onClick: () =>
+                useOrchestrationStore
+                  .getState()
+                  .connect(orchestratorId, "terminal", terminal.id),
+            },
+          ];
+        }),
+        isOrchestrator
+          ? {
+              label: "Remove Orchestrator Role",
+              onClick: () => removeOrchestratorRole(terminal.id),
+            }
+          : {
+              label: "Make Orchestrator",
+              onClick: () => void makeTerminalOrchestrator(terminal.id),
+            },
+      ];
   const [contextMenu, setContextMenu] = useState<{
     x: number;
     y: number;

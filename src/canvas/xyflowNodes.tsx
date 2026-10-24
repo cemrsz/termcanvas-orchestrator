@@ -87,8 +87,14 @@ function TerminalNode({ data }: NodeProps<TerminalFlowNode>) {
       [data.terminalId],
     ),
   );
-  const hasOrchestrators = useOrchestrationStore(
-    (state) => state.orchestratorIds.length > 0,
+  // An orchestrator also takes wires in once there is another one to
+  // report to (lead -> managers -> workers).
+  const hasOtherOrchestrators = useOrchestrationStore(
+    useCallback(
+      (state) =>
+        state.orchestratorIds.some((id) => id !== data.terminalId),
+      [data.terminalId],
+    ),
   );
   const wiredSummary = useOrchestrationStore(
     useCallback(
@@ -276,7 +282,7 @@ function TerminalNode({ data }: NodeProps<TerminalFlowNode>) {
   }
 
   const showInPort =
-    !isOrchestrator && hasOrchestrators && isAgentTerminalType(terminal.type);
+    hasOtherOrchestrators && isAgentTerminalType(terminal.type);
 
   return (
     <div
@@ -310,7 +316,9 @@ function TerminalNode({ data }: NodeProps<TerminalFlowNode>) {
           <OrchestratorOutPort />
         </>
       )}
-      {showInPort && <OrchestrationInPort color={ORCHESTRATOR_COLOR} />}
+      {showInPort && (
+        <OrchestrationInPort color={ORCHESTRATOR_COLOR} onTop={isOrchestrator} />
+      )}
       <NodeResizer
         isVisible={hovered}
         minWidth={300}

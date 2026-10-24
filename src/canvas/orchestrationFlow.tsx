@@ -143,8 +143,34 @@ export function OrchestratorOutPort() {
   );
 }
 
-/** Input ports of a worker agent tile or a source node. */
-export function OrchestrationInPort({ color }: { color: string }) {
+/**
+ * Input ports of a worker agent tile or a source node. An orchestrator
+ * already uses its side ports for outgoing wires, so the wire from its own
+ * manager lands on a port on its top edge.
+ */
+export function OrchestrationInPort({
+  color,
+  onTop = false,
+}: {
+  color: string;
+  onTop?: boolean;
+}) {
+  if (onTop) {
+    return (
+      <Handle
+        type="target"
+        id={`${ORCHESTRATION_IN_HANDLE}-top`}
+        position={Position.Top}
+        className="nodrag nopan"
+        style={{
+          ...portStyle(color, "left"),
+          top: -7,
+          left: 44,
+        }}
+        title="Wire a manager orchestrator here to make this one report to it"
+      />
+    );
+  }
   return (
     <>
       {(["left", "right"] as const).map((side) => (
@@ -257,6 +283,19 @@ function SourceNode({ data }: NodeProps<SourceFlowNode>) {
             onMouseDown={(e) => e.stopPropagation()}
           />
         )}
+        {source.kind === "sheet" && (
+          <input
+            className="nodrag tc-meta tc-mono w-full rounded border border-[var(--border)] bg-[var(--bg)] px-2 py-1 text-[var(--text-primary)] outline-none focus:border-[var(--text-secondary)]"
+            value={source.writeUrl ?? ""}
+            placeholder="Write bridge URL (Apps Script / n8n) — lets agents edit rows"
+            title="Apps Script web app or n8n webhook that reads and writes this sheet (see integrations/google-sheets)"
+            spellCheck={false}
+            onChange={(e) =>
+              updateSource(source.id, { writeUrl: e.target.value.trim() || undefined })
+            }
+            onMouseDown={(e) => e.stopPropagation()}
+          />
+        )}
         <textarea
           className="nodrag nowheel tc-meta w-full resize-none rounded border border-[var(--border)] bg-[var(--bg)] px-2 py-1 text-[var(--text-primary)] outline-none focus:border-[var(--text-secondary)]"
           rows={isNote ? 6 : 3}
@@ -275,7 +314,7 @@ function SourceNode({ data }: NodeProps<SourceFlowNode>) {
             }}
           />
           {wiredCount > 0
-            ? `Wired to ${wiredCount === 1 ? "the orchestrator" : `${wiredCount} orchestrators`}`
+            ? `Shared with the whole team · wired to ${wiredCount === 1 ? "1 orchestrator" : `${wiredCount} orchestrators`}`
             : "Not wired — drag from an orchestrator's port to here"}
         </div>
       </div>
@@ -390,13 +429,15 @@ export function buildOrchestrationEdges(options: {
     }
     if (!targetRect) continue;
     const [outSide, inSide] = facingSides(orchestratorRect, targetRect);
+    const targetIsManager =
+      link.targetKind === "terminal" && orchestrators.has(link.targetId);
     edges.push({
       id: link.id,
       type: "orchestration",
       source: link.orchestratorId,
       sourceHandle: `${ORCHESTRATOR_OUT_HANDLE}-${outSide}`,
       target: link.targetId,
-      targetHandle: `${ORCHESTRATION_IN_HANDLE}-${inSide}`,
+      targetHandle: `${ORCHESTRATION_IN_HANDLE}-${targetIsManager ? "top" : inSide}`,
       data: { linkId: link.id, color, busy },
       selectable: false,
       focusable: false,

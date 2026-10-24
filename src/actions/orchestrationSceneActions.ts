@@ -33,8 +33,9 @@ function notifyError(message: string) {
 }
 
 /**
- * Wire every agent terminal of the project to the orchestrator, so a fresh
- * orchestrator starts out "connected to my agents".
+ * Wire every free agent terminal of the project to the orchestrator, so a
+ * fresh orchestrator starts out "connected to my agents". Agents that
+ * already report to someone stay in their team.
  */
 function connectProjectAgents(orchestratorId: string, projectId: string) {
   const project = useProjectStore
@@ -47,6 +48,13 @@ function connectProjectAgents(orchestratorId: string, projectId: string) {
       if (terminal.id === orchestratorId || terminal.stashed) continue;
       if (!isAgentTerminalType(terminal.type)) continue;
       if (store.orchestratorIds.includes(terminal.id)) continue;
+      const hasManager = useOrchestrationStore
+        .getState()
+        .links.some(
+          (link) =>
+            link.targetKind === "terminal" && link.targetId === terminal.id,
+        );
+      if (hasManager) continue;
       store.connect(orchestratorId, "terminal", terminal.id);
     }
   }

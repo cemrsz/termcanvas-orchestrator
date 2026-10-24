@@ -653,6 +653,9 @@ function normalizeOrchestration(
         url: typeof source.url === "string" ? source.url : "",
         description:
           typeof source.description === "string" ? source.description : "",
+        ...(typeof source.writeUrl === "string" && source.writeUrl
+          ? { writeUrl: source.writeUrl }
+          : {}),
         x: typeof source.x === "number" ? source.x : 0,
         y: typeof source.y === "number" ? source.y : 0,
         w: typeof source.w === "number" ? source.w : 300,
@@ -670,7 +673,18 @@ function normalizeOrchestration(
           typeof link.targetId === "string",
       )
     : [];
-  return { orchestratorIds, sources, links };
+  const roles: Record<string, string> = {};
+  if (isRecord(raw.roles)) {
+    for (const [id, role] of Object.entries(raw.roles)) {
+      if (typeof role === "string" && role.trim()) roles[id] = role;
+    }
+  }
+  return {
+    orchestratorIds,
+    sources,
+    links,
+    ...(Object.keys(roles).length > 0 ? { roles } : {}),
+  };
 }
 
 function looksLikeSceneWorkspaceSnapshot(record: Record<string, unknown>) {

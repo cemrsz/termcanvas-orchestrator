@@ -26,6 +26,7 @@ ekler; aşağıdaki liste commit sırasıyla aynıdır.
 14. [Düzeltme: tarayıcı kartı sürükleme](14-tarayici-karti.md) — n8n kartı gibi tarayıcı kartları taşınamıyordu
 15. [n8n okuma webhook'u ve kılavuz](15-n8n-ve-kilavuz.md) — özel Sheet'i n8n üzerinden okuma, kullanım kılavuzu
 16. [Düzeltme: oturum geri yükleme](16-oturum-geri-yukleme.md) — açılışta aynı Claude oturumları geri gelir, kapanışta kayıt
+17. [Ekip grafiği](17-ekip-grafigi.md) — kademeli yönetim, döngü engeli, ekibe paylaşılan kaynaklar, roller
 
 ## Nasıl kullanılır
 

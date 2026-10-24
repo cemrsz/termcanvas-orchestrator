@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { useWorkspaceStore } from "./workspaceStore";
+import { wouldCreateCycle } from "../../shared/team";
 import type { TerminalType } from "../types";
 import type {
   OrchestrationDocument,
@@ -24,7 +25,7 @@ export function isAgentTerminalType(type: TerminalType): boolean {
 }
 
 export const SOURCE_NODE_WIDTH = 300;
-export const SOURCE_NODE_HEIGHT = 190;
+export const SOURCE_NODE_HEIGHT = 220;
 
 const DEFAULT_SOURCE_NAMES: Record<OrchestrationSourceKind, string> = {
   sheet: "Google Sheet",
@@ -35,6 +36,7 @@ const DEFAULT_SOURCE_NAMES: Record<OrchestrationSourceKind, string> = {
 };
 
 interface OrchestrationStore extends OrchestrationDocument {
+  roles: Record<string, string>;
   markOrchestrator: (terminalId: string) => void;
   unmarkOrchestrator: (terminalId: string) => void;
   addSource: (
@@ -49,6 +51,7 @@ interface OrchestrationStore extends OrchestrationDocument {
     targetId: string,
   ) => boolean;
   disconnect: (linkId: string) => void;
+  setRole: (terminalId: string, role: string) => void;
   restore: (doc: OrchestrationDocument | undefined) => void;
 }
 
@@ -66,15 +69,14 @@ export const useOrchestrationStore = create<OrchestrationStore>((set, get) => ({
   orchestratorIds: [],
   sources: {},
   links: [],
+  roles: {},
 
   markOrchestrator: (terminalId) => {
     if (get().orchestratorIds.includes(terminalId)) return;
+    // An orchestrator may itself report to another one (lead -> managers),
+    // so wires into it stay.
     set((state) => ({
       orchestratorIds: [...state.orchestratorIds, terminalId],
-      // An orchestrator is never a worker of another orchestrator.
-      links: state.links.filter(
-        (link) => !(link.targetKind === "terminal" && link.targetId === terminalId),
-      ),
     }));
     markDirty();
   },
@@ -132,7 +134,10 @@ export const useOrchestrationStore = create<OrchestrationStore>((set, get) => ({
   connect: (orchestratorId, targetKind, targetId) => {
     const state = get();
     if (!state.orchestratorIds.includes(orchestratorId)) return false;
-    if (targetKind === "terminal" && state.orchestratorIds.includes(targetId)) {
+    if (
+      targetKind === "terminal" &&
+      wouldCreateCycle(state.links, orchestratorId, targetId)
+    ) {
       return false;
     }
     if (targetKind === "source" && !state.sources[targetId]) return false;
@@ -162,11 +167,22 @@ export const useOrchestrationStore = create<OrchestrationStore>((set, get) => ({
     markDirty();
   },
 
+  setRole: (terminalId, role) => {
+    const next = role.trim();
+    if ((get().roles[terminalId] ?? "") === next) return;
+    set((state) => {
+      const { [terminalId]: _previous, ...rest } = state.roles;
+      return { roles: next ? { ...rest, [terminalId]: next } : rest };
+    });
+    markDirty();
+  },
+
   restore: (doc) => {
     set({
       orchestratorIds: doc?.orchestratorIds ?? [],
       sources: doc?.sources ?? {},
       links: doc?.links ?? [],
+      roles: doc?.roles ?? {},
     });
   },
 }));
@@ -193,7 +209,8 @@ export function isOrchestratedTerminal(terminalId: string): boolean {
 export function captureOrchestration(
   liveTerminalIds: Set<string>,
 ): OrchestrationDocument | undefined {
-  const { orchestratorIds, sources, links } = useOrchestrationStore.getState();
+  const { orchestratorIds, sources, links, roles } =
+    useOrchestrationStore.getState();
   if (orchestratorIds.length === 0 && Object.keys(sources).length === 0) {
     return undefined;
   }
@@ -201,6 +218,9 @@ export function captureOrchestration(
     liveTerminalIds.has(id),
   );
   const orchestratorSet = new Set(liveOrchestrators);
+  const liveRoles = Object.fromEntries(
+    Object.entries(roles).filter(([id]) => liveTerminalIds.has(id)),
+  );
   return {
     orchestratorIds: liveOrchestrators,
     sources,
@@ -211,5 +231,6 @@ export function captureOrchestration(
           ? liveTerminalIds.has(link.targetId)
           : link.targetId in sources),
     ),
+    ...(Object.keys(liveRoles).length > 0 ? { roles: liveRoles } : {}),
   };
 }

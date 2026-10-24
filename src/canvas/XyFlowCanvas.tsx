@@ -69,6 +69,7 @@ import {
   type OrchestrationFlowEdge,
 } from "./orchestrationFlow";
 import { useOrchestrationStore } from "../stores/orchestrationStore";
+import { wouldCreateCycle } from "../../shared/team";
 import { useTerminalRuntimeStateStore } from "../stores/terminalRuntimeStateStore";
 import {
   addOrchestrationSourceInScene,
@@ -504,8 +505,10 @@ function XyFlowCanvasInner() {
     if (!isOrchestratorOutHandle(connection.sourceHandle)) return false;
     if (!isOrchestrationInHandle(connection.targetHandle)) return false;
     if (!state.orchestratorIds.includes(connection.source)) return false;
-    if (connection.source === connection.target) return false;
-    return !state.orchestratorIds.includes(connection.target);
+    if (state.sources[connection.target]) return true;
+    // Orchestrator -> orchestrator wires build the hierarchy; only loops are
+    // refused.
+    return !wouldCreateCycle(state.links, connection.source, connection.target);
   }, []);
 
   const handleConnect = useCallback<OnConnect>((connection: Connection) => {
