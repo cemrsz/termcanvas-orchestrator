@@ -1,4 +1,21 @@
 import { spawnSync } from "node:child_process";
+import { existsSync } from "node:fs";
+import { createRequire } from "node:module";
+import path from "node:path";
+
+// node-pty is the only native dependency. It is an N-API module, so where it
+// ships a prebuild (Windows, macOS) that binary already works in Electron;
+// rebuilding from source there needs extra toolchain parts (on Windows the
+// Spectre-mitigated MSVC libraries) and fails without them.
+function hasNodePtyPrebuild() {
+  try {
+    const pkg = createRequire(import.meta.url).resolve("node-pty/package.json");
+    const dir = path.join(path.dirname(pkg), "prebuilds", `${process.platform}-${process.arch}`);
+    return existsSync(path.join(dir, "pty.node"));
+  } catch {
+    return false;
+  }
+}
 
 function isProductionOnlyInstall() {
   if (process.env.NODE_ENV === "production") return true;
@@ -26,5 +43,9 @@ if (isProductionOnlyInstall()) {
   process.exit(0);
 }
 
-run("electron-builder", ["install-app-deps"]);
+if (hasNodePtyPrebuild()) {
+  console.log(`[postinstall] Using node-pty's prebuilt binary for ${process.platform}-${process.arch}`);
+} else {
+  run("electron-builder", ["install-app-deps"]);
+}
 run("playwright", ["install", "chromium"]);

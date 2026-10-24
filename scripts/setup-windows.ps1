@@ -80,8 +80,7 @@ Ok "claude $(& claude --version)"
 Step "Project dependencies (pnpm install - downloads Electron and Chromium, takes a few minutes)"
 & pnpm install
 if ($LASTEXITCODE -ne 0) {
-  Fail ("pnpm install failed. If the error mentions node-pty, node-gyp or MSBuild, install " +
-    "'Visual Studio Build Tools' with 'Desktop development with C++' and run this script again.")
+  Fail "pnpm install failed. Copy the output above into your Claude session, then run this script again after the fix."
 }
 Ok "dependencies installed"
 
