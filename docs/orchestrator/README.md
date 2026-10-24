@@ -36,6 +36,7 @@ ekler; aşağıdaki liste commit sırasıyla aynıdır.
 22. [Ekip paneli](22-ekip-paneli.md) — solda canlı "şunu yapıyorum" akışı, kadro ve rapor okuyucu
 23. [Kılavuz ve doğrulama](23-dogrulama.md) — güncel kullanım kılavuzu, uçtan uca testler, bilinen sınırlar
 24. [Gerçek test](24-gercek-test.md) — gerçek Claude + n8n ile 25 agent; bulunan 9 sorun ve düzeltmeleri
+25. [Windows'a devir](25-windows-devir.md) — kullanıcının bilgisayarında çalışan bir Claude oturumu için kurulum ve doğrulama listesi
 
 ## Nasıl kullanılır
 
