@@ -133,3 +133,31 @@ Bilgisayar buluttaki demo ile aynı sayılır: 1–7 doğrulandı, kullanıcı
 istiyorsa 8–9 da. Sonucu kullanıcıya kısaca söyle; kod değiştiyse commit
 edip push et ve bu dosyanın altına "Windows sonuçları" başlığıyla ne
 bulduğunu ekle.
+
+## Windows sonuçları (24.10.2026)
+
+Windows 11 Pro, Node 24.16, pnpm 10.33, Electron 41.2.1, Claude Code 2.1.310.
+1–7 doğrulandı; 8–9 (Sheet, n8n) yapılmadı.
+
+| Adım | Sonuç |
+| --- | --- |
+| 1 | `setup-windows.ps1` tamam, `node-pty` hazır derlemeyi kullandı. Playwright'ın Chromium zip'ini açma adımı iki kez `D3DCompiler_47.dll`'de takıldı (zip tamdı); `tar -xf` ile `chromium-1217` ve `chromium_headless_shell-1217` klasörlerine açıp `INSTALLATION_COMPLETE` yazınca Chromium çalıştı. Kod değişmedi. |
+| 2 | `pty-ok`. `electron.exe` bir GUI uygulaması: PowerShell'de `&` ile çıktısı görünmez, `Start-Process -Wait -RedirectStandardOutput` gerekir. |
+| 3 | `typecheck` temiz. Testler (bu branch'teki eklemelerle) 579: 569 geçti, 3 atlandı, 7 düştü. Ekip testindeki tek Windows hatası düzeltildi (aşağıda). Düşen 7'si upstream: `git-watcher` (zaman aşımı), `headless-cli-control` ve `headless-workflow-control` ×2 (`codex` beklenirken `claude` seçiliyor), `memory-service` (Windows'ta Claude bellek yolu), `pty-launch` (macOS yolları), `session-watcher` codex `rollout_path`. |
+| 4 | Uygulama açıldı, iki uç JSON döndü. `pnpm dev` ile durum `%USERPROFILE%\.termcanvas-dev\` altında (`port`, `state.json`, `team\`), `.termcanvas` değil. `/state` `sessionId` döndürmüyor; oturumlar `state.json`'da. `POST /terminal/create` Windows'ta yalnızca `C:/...` biçimindeki worktree yolunu tanıyor. |
+| 5 | Düzeltmelerden sonra küçük ekip `ekip` klasörüne kuruldu: 9 Claude, doğru modeller ve oturum kimlikleri, `/team/<director>` 9 üye ve doğru yönetici/rapor ilişkileri, Git Bash'te `tc.mjs status` çalışıyor, hiçbir agent güven/giriş ekranında değil, güven bayrağı `~/.claude.json`'da hem `C:\` hem `C:/` anahtarıyla. |
+| 6 | Kullanıcının iki komutu (herkesten selam) Director → yöneticiler → işçiler zincirinden geçti: `task`, `say`, `done`, `report`; tur ~45 sn. Pano, Writer 1'in `tc.mjs post`'u ile denendi: `board` satırı ve `board.jsonl` oluştu. |
+| 7 | Pencere normal kapatılıp başlatıcıyla açıldı: 9 terminalin kimliği ve `sessionId`'si aynı, hepsi `--resume` ile döndü, Director'ın eski konuşması ekranda, giriş kutusu hazır, brifing tekrar gönderilmedi. |
+
+**Düzeltilenler (bu branch'te):**
+
+- `tests/team-api.test.ts`: `tc.mjs`'in çalıştırma biti Windows'ta yok (NTFS); kontrol Windows'ta atlanıyor. Git Bash `./tc.mjs`'i shebang'den çalıştırıyor.
+- Sağ tık menüsü ekibi/orkestratörü seçili proje yoksa sessizce ilk projeye kuruyordu; boş kanvasa her tık seçimi bıraktığı, terminaller kapatılınca da seçim projede kaldığı için ekip üç kez yanlış klasöre kuruldu. Menü artık her worktree için ayrı seçenek gösteriyor ("New Small Team in ekip …"), seçili olan en üstte (`src/canvas/contextMenuTargets.ts`).
+- Kutu seçimi hiç çalışmıyordu: sürüklemenin sonundaki tıklama kanvasın tıklama işleyicisine gidip seçimi siliyordu; o tek tıklama artık yutuluyor. Ayrıca varsayılan araç Seçim (sol sürükleme kutu çizer, H el aracı), Delete seçili terminalleri onayla kapatıyor, seçili terminaller vurgulanıyor.
+
+**Bilinmesi gerekenler (kod değişmedi):**
+
+- TermCanvas bir Claude Code oturumunun içinden (ör. o oturumun aracıyla `pnpm dev`) başlatılırsa `CLAUDECODE`, `CLAUDE_CODE_CHILD_SESSION` gibi değişkenleri agent'lara geçiriyor. Agent'lar kendini alt oturum sanıp konuşmayı diske yazmıyor; yeniden açılışta `--resume` yerine `--session-id` + brifing tekrarı oluyor. O oturum kapanınca uygulama da kapanıyor. Gezginden ya da `TermCanvas-Baslat.vbs` ile açınca sorun yok. Öneri: pty ortamından bu değişkenler temizlensin.
+- `isClaudeFolderTrusted` üst klasör güvenini yeterli sayıyor; Claude 2.1.310 Windows'ta güvenilir bir klasörün altındaki git kökünde yine soruyor. Bu durumda ekip güveni sormadan kurulur ve agent'lar güven ekranında kalır (`detectBlockingPrompt` yakalar).
+- Bir CLI çıkınca kart kabuğa düşüyor ve `sessionId` siliniyor (upstream davranışı); uygulama düzgün kapanmadan agent'lar ölürse oturum bağı kaybolabilir.
+- Bir proje menüde iki kez "master" olarak görünebiliyor (aynı klasör iki worktree olarak kayıtlı); incelenmedi.
