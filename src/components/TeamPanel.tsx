@@ -502,17 +502,21 @@ export function TeamPanel() {
   // Follow the newest line unless the user scrolled up to read.
   const feedRef = useRef<HTMLDivElement>(null);
   const stickToBottom = useRef(true);
+  const lastScrollTop = useRef(0);
   const [unseen, setUnseen] = useState(0);
+  // Keyed on the newest line, not the count: the feed is capped, so past
+  // the cap the count stops changing while lines keep arriving.
+  const newestId = visible[visible.length - 1]?.id;
   useLayoutEffect(() => {
     const node = feedRef.current;
-    if (!node) return;
+    if (!node || !newestId) return;
     if (stickToBottom.current) {
       node.scrollTop = node.scrollHeight;
       setUnseen(0);
     } else {
       setUnseen((count) => count + 1);
     }
-  }, [visible.length]);
+  }, [newestId]);
 
   const [rosterOpen, setRosterOpen] = useState(true);
   const teamReports = useMemo(
@@ -634,10 +638,18 @@ export function TeamPanel() {
             ref={feedRef}
             className="relative flex-1 min-h-0 overflow-y-auto pb-2"
             onScroll={(e) => {
+              // Only the user scrolls up; following the feed always scrolls
+              // down, and growing content scrolls nothing.
               const node = e.currentTarget;
-              stickToBottom.current =
+              const nearBottom =
                 node.scrollHeight - node.scrollTop - node.clientHeight < 40;
-              if (stickToBottom.current) setUnseen(0);
+              if (nearBottom) {
+                stickToBottom.current = true;
+                setUnseen(0);
+              } else if (node.scrollTop < lastScrollTop.current) {
+                stickToBottom.current = false;
+              }
+              lastScrollTop.current = node.scrollTop;
             }}
           >
             {visible.length === 0 ? (

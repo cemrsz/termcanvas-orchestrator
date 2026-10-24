@@ -128,6 +128,33 @@ export async function createTeamInScene(options: {
   if (!project || !worktree) return null;
 
   const plan = planTeam(options.template ?? FULL_TEAM, options.position);
+
+  // In a folder Claude was never told to trust, every agent would stop at
+  // its own "trust this folder?" prompt (with "No, exit" preselected).
+  const trusted = await window.termcanvas.claude
+    .isFolderTrusted(worktree.path)
+    .catch(() => true);
+  if (!trusted) {
+    const ok = window.confirm(
+      `Claude Code has not been told to trust this folder yet:\n\n${worktree.path}\n\n` +
+        `Each of the ${plan.length} agents would stop at its own "Do you trust this folder?" prompt. ` +
+        "Trust the folder for Claude now? (Only do this for your own projects.)",
+    );
+    if (ok) {
+      await window.termcanvas.claude.trustFolder(worktree.path).catch((error) => {
+        notifyError(
+          `Could not mark the folder as trusted: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      });
+    } else {
+      useNotificationStore
+        .getState()
+        .notify(
+          "warn",
+          "Each agent will ask whether to trust the folder; answer “Yes” in every terminal before giving the team a command.",
+        );
+    }
+  }
   const terminals = new Map<string, TerminalData>();
   for (const agent of plan) {
     terminals.set(agent.key, {

@@ -28,6 +28,10 @@ export function ContextMenu({ x, y, items, onClose }: Props) {
   useLayoutEffect(() => {
     const node = ref.current;
     if (!node) return;
+    // Measure at the left edge: near the right edge the menu would be
+    // squeezed into the space left there and measure too narrow.
+    node.style.left = "0px";
+    node.style.top = "0px";
     const rect = node.getBoundingClientRect();
     const vw = window.innerWidth;
     const vh = window.innerHeight;
@@ -40,6 +44,8 @@ export function ContextMenu({ x, y, items, onClose }: Props) {
     if (ny + rect.height + VIEWPORT_MARGIN > vh) {
       ny = Math.max(VIEWPORT_MARGIN, vh - rect.height - VIEWPORT_MARGIN);
     }
+    node.style.left = `${nx}px`;
+    node.style.top = `${ny}px`;
     setPos({ x: nx, y: ny });
   }, [x, y, items]);
 
@@ -120,7 +126,9 @@ export function ContextMenu({ x, y, items, onClose }: Props) {
             key={`${item.label}-${i}`}
             role="menuitem"
             tabIndex={-1}
-            className={`w-full px-3 py-1.5 text-left text-[12px] transition-colors duration-quick ${
+            // block: as inline-blocks the items count side by side in the
+            // menu's natural width, which stretched it to the screen edge.
+            className={`block w-full px-3 py-1.5 text-left text-[12px] transition-colors duration-quick ${
               item.active
                 ? "text-[var(--accent)] bg-[var(--accent)]/10"
                 : item.danger

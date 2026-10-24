@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   Background,
   ReactFlow,
@@ -924,7 +925,9 @@ function XyFlowCanvasInner() {
         <Background gap={20} size={2} color="var(--border)" />
       </ReactFlow>
 
-      {contextMenu && (
+      {/* Portal: inside the canvas a fixed menu is positioned and clipped by
+          the canvas box, so near the right edge it slid under the side panel. */}
+      {contextMenu && createPortal(
         <ContextMenu
           x={contextMenu.clientX}
           y={contextMenu.clientY}
@@ -991,7 +994,8 @@ function XyFlowCanvasInner() {
             },
           ]}
           onClose={() => setContextMenu(null)}
-        />
+        />,
+        document.body,
       )}
 
       <ClusterLinkLayer />

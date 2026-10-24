@@ -39,6 +39,8 @@ export interface TeamHubDeps {
   /** Epoch ms of the terminal's last output or session activity. */
   getLastActivityAt?: (terminalId: string) => number | null;
   isPtyAlive: (ptyId: number) => boolean;
+  /** True while the agent sits at a start-up prompt (trust, login, …). */
+  isAtStartupPrompt?: (member: TeamMemberInfo) => boolean;
   /** Type a prompt into the agent's terminal and submit it. */
   deliver: (member: TeamMemberInfo, text: string) => Promise<void>;
   /** (Re)write the agent's AGENT.md and tc.mjs. */
@@ -83,6 +85,10 @@ interface QueuedDelivery {
   agentId: string;
   text: string;
   enqueuedAt: number;
+  /** Teammate who sent it, for messages. */
+  fromId?: string;
+  /** The message body without the bridge header. */
+  body?: string;
 }
 
 const ACTIVITY_MEMORY = 3000;
@@ -173,6 +179,9 @@ export class TeamHub {
   private delivering = new Set<string>();
   private preparedRoles = new Map<string, string>();
   private earlyHooks: { event: TeamHookEvent; at: number }[] = [];
+  /** Final message per agent from its Stop hook, and its last prompt time. */
+  private finalMessages = new Map<string, { at: number; text: string }>();
+  private lastPromptAt = new Map<string, number>();
   private readonly activityFile: string;
   private readonly boardFile: string;
   private readonly reportsFile: string;
@@ -284,6 +293,14 @@ export class TeamHub {
     return null;
   }
 
+  /** The final message of the member's latest turn, if that turn ended. */
+  finalMessage(terminalId: string): string | null {
+    const final = this.finalMessages.get(terminalId);
+    if (!final) return null;
+    const promptAt = this.lastPromptAt.get(terminalId) ?? 0;
+    return final.at >= promptAt ? final.text : null;
+  }
+
   /** When the member last finished a turn, per its Stop hook. */
   lastDoneAt(terminalId: string): number | null {
     for (let i = this.activity.length - 1; i >= 0; i--) {
@@ -340,16 +357,26 @@ export class TeamHub {
       if (this.earlyHooks.length > 200) this.earlyHooks.shift();
       return;
     }
+    if (event.hook_event_name === "UserPromptSubmit") {
+      this.lastPromptAt.set(member.id, at);
+    }
     if (event.hook_event_name === "Stop") {
-      let reply: string | null = null;
+      // Claude puts the final message in the hook itself; its transcript
+      // line can land a moment after the hook fires.
+      let reply: string | null =
+        typeof event.last_assistant_message === "string" &&
+        event.last_assistant_message.trim()
+          ? event.last_assistant_message
+          : null;
       const transcript = event.transcript_path;
-      if (typeof transcript === "string" && transcript && this.deps.readLastReply) {
+      if (!reply && typeof transcript === "string" && transcript && this.deps.readLastReply) {
         try {
           reply = this.deps.readLastReply(transcript);
         } catch {
           reply = null;
         }
       }
+      if (reply) this.finalMessages.set(member.id, { at, text: reply });
       this.record({
         agentId: member.id,
         agentName: member.name,
@@ -481,10 +508,29 @@ export class TeamHub {
 
   // ── Delivery queue ────────────────────────────────────────────────────
 
-  enqueue(agentId: string, text: string) {
+  enqueue(
+    agentId: string,
+    text: string,
+    meta: { fromId?: string; body?: string } = {},
+  ) {
     const at = this.now();
-    this.queue.push({ id: newId("dlv", at), agentId, text, enqueuedAt: at });
+    this.queue.push({ id: newId("dlv", at), agentId, text, enqueuedAt: at, ...meta });
     void this.tick();
+  }
+
+  /**
+   * Hand an agent the messages a teammate queued for it, removing them from
+   * the queue: an agent waiting on `msg --wait` reads the answer in the same
+   * turn instead of getting it again as its next prompt.
+   */
+  takeMessages(agentId: string, fromId: string): { at: number; text: string }[] {
+    const taken = this.queue.filter(
+      (item) => item.agentId === agentId && item.fromId === fromId,
+    );
+    if (taken.length === 0) return [];
+    const ids = new Set(taken.map((item) => item.id));
+    this.queue = this.queue.filter((item) => !ids.has(item.id));
+    return taken.map((item) => ({ at: item.enqueuedAt, text: item.body ?? item.text }));
   }
 
   private isIdle(member: TeamMemberInfo): boolean {
@@ -492,6 +538,7 @@ export class TeamHub {
       return false;
     }
     if ((this.settlingUntil.get(member.id) ?? 0) > this.now()) return false;
+    if (this.deps.isAtStartupPrompt?.(member)) return false;
     const state = this.deps.getTurnState(member.id);
     if (!state || !BUSY_STATES.has(state)) return true;
     if (STALE_TURN_STATES.has(state) && this.deps.getLastActivityAt) {
@@ -557,7 +604,7 @@ export class TeamHub {
       `${TEAM_MESSAGE_PREFIX}message from ${from.name}${from.role ? ` (${from.role})` : ""}]\n` +
       `Answer only if needed: node ${dir}/tc.mjs msg "${from.name}" "<answer>"\n\n` +
       text.trim();
-    this.enqueue(to.id, body);
+    this.enqueue(to.id, body, { fromId: from.id, body: text.trim() });
     this.recordFor(fromId, {
       kind: "msg",
       targetId: to.id,

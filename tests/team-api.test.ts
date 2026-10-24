@@ -19,8 +19,11 @@ interface Harness {
   writes: { ptyId: number; data: string }[];
   bridgeCalls: unknown[];
   delivered: { to: string; text: string }[];
+  turnStates: Record<string, string>;
   hub: TeamHub;
   tc: (agent: string, ...args: string[]) => Promise<{ stdout: string; stderr: string; code: number }>;
+  /** Run one agent's tool from another agent's terminal. */
+  tcAs: (caller: string, agent: string, ...args: string[]) => Promise<{ stdout: string; stderr: string; code: number }>;
   close: () => void;
 }
 
@@ -32,6 +35,7 @@ async function harness(): Promise<Harness> {
   const writes: { ptyId: number; data: string }[] = [];
   const bridgeCalls: unknown[] = [];
   const delivered: { to: string; text: string }[] = [];
+  const turnStates: Record<string, string> = {};
 
   // Stand-in for the Apps Script / n8n sheet bridge.
   const bridge = http.createServer((req, res) => {
@@ -53,7 +57,7 @@ async function harness(): Promise<Harness> {
 
   const hub = new TeamHub({
     dataDir: path.join(root, "team"),
-    getTurnState: () => "turn_complete",
+    getTurnState: (id) => turnStates[id] ?? "turn_complete",
     isPtyAlive: () => true,
     deliver: async (m, text) => {
       delivered.push({ to: m.id, text });
@@ -121,12 +125,15 @@ async function harness(): Promise<Harness> {
   const port = (api.address() as { port: number }).port;
   fs.writeFileSync(portFile, String(port));
 
-  const tc = async (agent: string, ...args: string[]) => {
+  const tcEnv = async (caller: string | null, agent: string, ...args: string[]) => {
+    const env = { ...process.env };
+    delete env.TERMCANVAS_TERMINAL_ID;
+    if (caller) env.TERMCANVAS_TERMINAL_ID = caller;
     try {
       const { stdout, stderr } = await run(
         process.execPath,
         [path.join(repo, ".termcanvas", "agent", agent, "tc.mjs"), ...args],
-        { cwd: repo },
+        { cwd: repo, env },
       );
       return { stdout, stderr, code: 0 };
     } catch (err) {
@@ -134,13 +141,17 @@ async function harness(): Promise<Harness> {
       return { stdout: e.stdout, stderr: e.stderr, code: e.code };
     }
   };
+  const tc = (agent: string, ...args: string[]) => tcEnv(null, agent, ...args);
+  const tcAs = (caller: string, agent: string, ...args: string[]) => tcEnv(caller, agent, ...args);
   return {
     repo,
     writes,
     bridgeCalls,
     delivered,
+    turnStates,
     hub,
     tc,
+    tcAs,
     close: () => {
       api.close();
       bridge.close();
@@ -222,4 +233,52 @@ test("tc.mjs drives a team end to end over the API", async (t) => {
 
   const stranger = await h.tc("w1", "reply", "Nobody");
   assert.match(stranger.stderr, /No single agent matches/);
+});
+
+test("final message excludes the narration written along the way", async () => {
+  const { extractFinalAssistantMessage, extractLastAssistantReply } = await import("../electron/orchestrator-bridge.ts");
+  const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "tc-final-")), "s.jsonl");
+  const line = (role: string, text: string, extra: Record<string, unknown> = {}) =>
+    JSON.stringify({ type: role, ...extra, message: { role, content: [{ type: "text", text }] } });
+  fs.writeFileSync(
+    file,
+    [
+      line("user", "do it", { origin: { kind: "human" } }),
+      line("assistant", "Step 1 is done, now step 2."),
+      line("assistant", "Bitti: 3 lead skorlandı."),
+    ].join("\n") + "\n",
+  );
+  assert.equal(extractFinalAssistantMessage(file), "Bitti: 3 lead skorlandı.");
+  assert.equal(extractLastAssistantReply(file), "Step 1 is done, now step 2.\n\nBitti: 3 lead skorlandı.");
+});
+
+test("a worker running its manager's copy of tc.mjs still acts as itself", async (t) => {
+  const h = await harness();
+  t.after(() => h.close());
+  const send = await h.tcAs("w1", "lead", "send", "Data", "do my work");
+  assert.notEqual(send.code, 0);
+  assert.match(send.stderr, /another agent's tool; running it as you/);
+  assert.match(send.stderr, /Only managers send tasks/);
+  assert.equal((await h.tcAs("w1", "lead", "say", "Using the wrong path")).code, 0);
+  const last = h.hub.listActivity().at(-1);
+  assert.equal(last?.agentName, "Writer");
+  // Outside a team terminal (no id in the environment) the copy's owner is used.
+  assert.match((await h.tc("lead", "status")).stdout, /You: Lead/);
+});
+
+test("msg --wait returns the teammate's answer in the same turn, once", async (t) => {
+  const h = await harness();
+  t.after(() => h.close());
+  // The asker is busy running the command, so nothing is typed into it.
+  h.turnStates.w1 = "tool_running";
+  const asking = h.tc("w1", "msg", "Data", "Which leads are Pending?", "--wait", "--timeout", "20");
+  await new Promise((resolve) => setTimeout(resolve, 1500));
+  assert.equal((await h.tc("w2", "msg", "Writer", "Ayse and Jonas")).code, 0);
+  const result = await asking;
+  assert.equal(result.code, 0, result.stderr);
+  assert.match(result.stdout, /\[Data answered\] Ayse and Jonas/);
+  h.turnStates.w1 = "turn_complete";
+  await h.hub.tick();
+  assert.equal(h.delivered.filter((d) => d.to === "w1").length, 0, "the answer is not delivered again");
+  assert.ok(fs.statSync(path.join(h.repo, ".termcanvas", "agent", "w1", "tc.mjs")).mode & 0o100);
 });

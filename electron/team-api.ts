@@ -14,6 +14,7 @@ import {
   submitComposerRequest,
 } from "./composer-submit";
 import { extractLastAssistantReply, stripAnsi } from "./orchestrator-bridge";
+import { describeBlockingPrompt, detectBlockingPrompt } from "./claude-trust";
 import type { TerminalType } from "../src/types";
 import { resolveMemberRef, type TeamMemberInfo } from "../shared/team";
 import {
@@ -46,7 +47,7 @@ export function matchTeamRoute(
 
 /** Paste a prompt into an agent's terminal the same way the composer does. */
 export async function submitTextToAgent(
-  ptyManager: Pick<PtyManager, "getPid" | "write">,
+  ptyManager: Pick<PtyManager, "getPid" | "write" | "getOutput">,
   agent: Pick<TeamMemberInfo, "id" | "name" | "type" | "worktreePath" | "ptyId">,
   text: string,
 ): Promise<void> {
@@ -55,6 +56,15 @@ export async function submitTextToAgent(
       new Error(`${agent.name} is not running on the canvas`),
       { status: 409 },
     );
+  }
+  // Enter on Claude's trust prompt answers "No, exit": never type there.
+  const blocking = detectBlockingPrompt(
+    ptyManager.getOutput(agent.ptyId, 80).join("\n"),
+  );
+  if (blocking) {
+    throw Object.assign(new Error(describeBlockingPrompt(agent.name, blocking)), {
+      status: 409,
+    });
   }
   const result = await submitComposerRequest(
     {
@@ -107,9 +117,15 @@ export class TeamApi {
   }
 
   private readReply(agent: { id: string; ptyId: number | null }) {
-    const { ptyManager, telemetryService } = this.deps;
+    const { hub, ptyManager, telemetryService } = this.deps;
     const sessionFile = telemetryService.getTerminalSnapshot(agent.id)?.session_file;
-    const sessionReply = sessionFile ? extractLastAssistantReply(sessionFile) : null;
+    let sessionReply = sessionFile ? extractLastAssistantReply(sessionFile) : null;
+    // The transcript can trail the Stop hook by a moment; make sure the
+    // final message the hook reported is part of what the manager reads.
+    const final = hub.finalMessage(agent.id);
+    if (final && !(sessionReply ?? "").includes(final.trim().slice(0, 200))) {
+      sessionReply = sessionReply ? `${sessionReply}\n\n${final}` : final;
+    }
     if (sessionReply) {
       return { source: "session", reply: sessionReply };
     }
@@ -126,6 +142,9 @@ export class TeamApi {
     body: any,
   ): Promise<unknown> {
     const { hub } = this.deps;
+    // Whoever runs the tool acts as itself, even with a teammate's copy.
+    const caller = url.searchParams.get("caller")?.trim();
+    if (caller && caller !== agentId && hub.view(caller)) agentId = caller;
     const view = hub.requireView(agentId);
     const teamIds = new Set(view.members.map((member) => member.id));
     const teammates = view.members;
@@ -188,6 +207,11 @@ export class TeamApi {
       );
       hub.sendMessage(agentId, agent.id, text);
       return { ok: true, agent: { id: agent.id, name: agent.name } };
+    }
+
+    if (method === "GET" && action === "answers") {
+      const from = resolveMemberRef(teammates, url.searchParams.get("from"));
+      return { from: { id: from.id, name: from.name }, messages: hub.takeMessages(agentId, from.id) };
     }
 
     if (method === "POST" && action === "say") {

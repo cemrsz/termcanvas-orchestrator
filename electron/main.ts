@@ -61,10 +61,15 @@ import {
 } from "./composer-submit";
 import {
   buildOrchestratorStartPrompt,
-  extractLastAssistantReply,
+  extractFinalAssistantMessage,
   writeOrchestratorWorkspace,
 } from "./orchestrator-bridge";
 import { writeAgentWorkspace } from "./team-bridge";
+import {
+  detectBlockingPrompt,
+  isClaudeFolderTrusted,
+  trustClaudeFolder,
+} from "./claude-trust";
 import { TeamHub } from "./team-hub";
 import {
   TeamInboxServer,
@@ -314,6 +319,10 @@ const teamHub = new TeamHub({
     return stamps.length > 0 ? Math.max(...stamps) : null;
   },
   isPtyAlive: (ptyId) => !!ptyManager.getPid(ptyId),
+  isAtStartupPrompt: (member) =>
+    member.ptyId !== null &&
+    detectBlockingPrompt(ptyManager.getOutput(member.ptyId, 80).join("\n")) !==
+      null,
   deliver: (member, text) => submitTextToAgent(ptyManager, member, text),
   writeWorkspace: (member, role) => {
     writeAgentWorkspace({
@@ -323,7 +332,7 @@ const teamHub = new TeamHub({
       role,
     });
   },
-  readLastReply: (transcriptPath) => extractLastAssistantReply(transcriptPath),
+  readLastReply: (transcriptPath) => extractFinalAssistantMessage(transcriptPath),
   onActivity: (entries) => {
     // Hook events arrive in bursts; batch them for the renderer.
     pendingTeamActivity.push(...entries);
@@ -1951,6 +1960,15 @@ function setupIpc() {
       };
     },
   );
+
+  ipcMain.handle("claude:is-folder-trusted", (_event, folder: string) =>
+    isClaudeFolderTrusted(folder),
+  );
+
+  ipcMain.handle("claude:trust-folder", (_event, folder: string) => {
+    trustClaudeFolder(folder);
+    return isClaudeFolderTrusted(folder);
+  });
 
   ipcMain.on("team:sync-directory", (_event, directory: TeamDirectory) => {
     teamHub.setDirectory(directory);

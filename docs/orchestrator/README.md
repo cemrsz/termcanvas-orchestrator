@@ -35,6 +35,7 @@ ekler; aşağıdaki liste commit sırasıyla aynıdır.
 21. [Hazır ekip](21-hazir-ekip.md) — sağ tık → 1 Opus · 4 Sonnet · 20 Haiku, org şeması yerleşimi
 22. [Ekip paneli](22-ekip-paneli.md) — solda canlı "şunu yapıyorum" akışı, kadro ve rapor okuyucu
 23. [Kılavuz ve doğrulama](23-dogrulama.md) — güncel kullanım kılavuzu, uçtan uca testler, bilinen sınırlar
+24. [Gerçek test](24-gercek-test.md) — gerçek Claude + n8n ile 25 agent; bulunan 9 sorun ve düzeltmeleri
 
 ## Nasıl kullanılır
 
@@ -51,6 +52,9 @@ ekler; aşağıdaki liste commit sırasıyla aynıdır.
    satırlarla canlı izle; raporları oradan aç.
 4. Uygulamayı kapatıp açtığında aynı 25 oturum, aynı konuşmalarıyla geri
    gelir.
+
+Klasör Claude için henüz güvenilir değilse ekip kurulurken bir kez sorulur;
+"Evet" dersen 25 agent'ın her biri ayrı ayrı sormaz.
 
 ### Kendi ekibini kurmak
 
@@ -79,6 +83,7 @@ istemez.
 | `status` | herkes | Ben, yöneticim, astlarım, tüm ekip (durum + şu an ne yapıyor), kaynaklar |
 | `say "<cümle>"` | herkes | Team paneline "şunu yapıyorum" |
 | `msg <ekip arkadaşı> <metin>` | herkes | Mesaj; alıcı boşa çıkınca teslim edilir |
+| `msg <ekip arkadaşı> "<soru>" --wait` | herkes | Sor ve cevabı aynı turda al |
 | `reply <agent>` | herkes | Bir ekip arkadaşının son cevabı |
 | `board` / `post <metin>` | herkes | Ortak ekip panosu |
 | `source <kaynak> [--query]` | herkes | Kaynağı okur (Sheet, n8n/API GET, dosya, not) |

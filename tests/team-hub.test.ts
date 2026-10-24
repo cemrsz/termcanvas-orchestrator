@@ -232,3 +232,34 @@ test("a silent 'thinking' state does not block deliveries forever", async () => 
   await hub.tick();
   assert.deepEqual(delivered, ["b"]);
 });
+
+test("real Claude prompts: pasted text is unwrapped and idle notices are ignored", () => {
+  const pasted = classifyPrompt(
+    '\n\n<pasted_content id="462b">\n[TermCanvas · task from Director to you (Data Manager)]\nTeam tool: …\n\nScore the leads\n</pasted_content>',
+  );
+  assert.deepEqual(pasted, { origin: "task", body: "Score the leads", from: "Director" });
+  const agent = { id: "a", name: "A" };
+  assert.equal(
+    describeHookEvent({ hook_event_name: "Notification", message: "Claude is waiting for your input" }, agent),
+    null,
+  );
+  const approval = describeHookEvent(
+    { hook_event_name: "Notification", message: "Claude needs your permission to use Bash" },
+    agent,
+  );
+  assert.equal(approval?.kind, "waiting");
+});
+
+test("Stop hooks carry the final message even before the transcript has it", () => {
+  const { hub } = setup();
+  hub.recordHookEvent({ hook_event_name: "UserPromptSubmit", terminal_id: "w1", prompt: "go" });
+  assert.equal(hub.finalMessage("w1"), null);
+  hub.recordHookEvent({
+    hook_event_name: "Stop",
+    terminal_id: "w1",
+    last_assistant_message: "3 lead skorlandı.\nAyrıntılar…",
+  });
+  assert.equal(hub.finalMessage("w1"), "3 lead skorlandı.\nAyrıntılar…");
+  const done = hub.listActivity().at(-1);
+  assert.equal(done && formatActivity(done, "tr"), "Bitirdim: 3 lead skorlandı.");
+});

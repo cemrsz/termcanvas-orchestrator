@@ -680,6 +680,12 @@ contextBridge.exposeInMainWorld("termcanvas", {
     submit: (request: unknown) =>
       ipcRenderer.invoke("composer:submit", request),
   },
+  claude: {
+    isFolderTrusted: (folder: string) =>
+      ipcRenderer.invoke("claude:is-folder-trusted", folder) as Promise<boolean>,
+    trustFolder: (folder: string) =>
+      ipcRenderer.invoke("claude:trust-folder", folder) as Promise<boolean>,
+  },
   team: {
     syncDirectory: (directory: unknown) =>
       ipcRenderer.send("team:sync-directory", directory),

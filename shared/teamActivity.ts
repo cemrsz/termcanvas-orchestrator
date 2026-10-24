@@ -67,7 +67,11 @@ export function clip(text: string, max = MAX_DETAIL): string {
 /** First meaningful line of a reply or prompt. */
 export function firstLine(text: string, max = MAX_DETAIL): string {
   for (const raw of text.split(/\r?\n/)) {
-    const line = raw.replace(/^[#>*\-\s]+/, "").trim();
+    // Markdown emphasis and code marks read as noise in a one-line feed.
+    const line = raw
+      .replace(/^[#>*\-\s]+/, "")
+      .replace(/\*\*|__|`/g, "")
+      .trim();
     if (line) return clip(line, max);
   }
   return "";
@@ -110,9 +114,13 @@ export function classifyPrompt(prompt: string): {
   body: string;
   from?: string;
 } {
-  const trimmed = prompt.trimStart();
+  // Claude Code hands pasted text to hooks wrapped in <pasted_content>.
+  const trimmed = prompt
+    .trim()
+    .replace(/^<pasted_content[^>]*>\s*/, "")
+    .replace(/\s*<\/pasted_content>$/, "");
   if (!trimmed.startsWith(TEAM_MESSAGE_PREFIX)) {
-    return { origin: "user", body: prompt };
+    return { origin: "user", body: trimmed };
   }
   const headerEnd = trimmed.indexOf("]");
   const header = trimmed.slice(TEAM_MESSAGE_PREFIX.length, headerEnd);
@@ -208,7 +216,9 @@ export function describeHookEvent(
     }
     case "Notification": {
       const message = typeof event.message === "string" ? event.message : "";
-      if (!/permission|approv|input|waiting/i.test(message)) return null;
+      // Only approval requests. Claude also notifies "waiting for your
+      // input" after a minute of idling, which is not a blocker.
+      if (!/permission|approv/i.test(message)) return null;
       return { ...base, kind: "waiting", text: clip(message) };
     }
     case "StopFailure": {

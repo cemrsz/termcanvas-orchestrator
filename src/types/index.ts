@@ -1006,6 +1006,11 @@ export interface TermCanvasAPI {
   composer: {
     submit: (request: ComposerSubmitRequest) => Promise<ComposerSubmitResult>;
   };
+  claude: {
+    /** Whether Claude Code was told to trust this folder (or a parent). */
+    isFolderTrusted: (folder: string) => Promise<boolean>;
+    trustFolder: (folder: string) => Promise<boolean>;
+  };
   team: {
     syncDirectory: (directory: TeamDirectory) => void;
     listActivity: (limit?: number) => Promise<TeamActivityEntry[]>;

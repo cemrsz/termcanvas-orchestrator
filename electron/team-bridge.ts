@@ -58,8 +58,10 @@ export function writeAgentWorkspace(options: {
   fs.writeFileSync(
     scriptPath,
     buildTeamScript(options.terminalId, options.portFile),
-    "utf-8",
+    { encoding: "utf-8", mode: 0o755 },
   );
+  // Agents sometimes run it as ./tc.mjs; the shebang needs the exec bit.
+  fs.chmodSync(scriptPath, 0o755);
   fs.writeFileSync(
     instructionsPath,
     buildAgentInstructions({
@@ -107,12 +109,17 @@ ${cli} ask <report> <text> | --file <p>       send, then wait
 - Your direct reports are listed under "Reports" in \`status\`. Split the
   work and give each one a self-contained task with \`send\`: they do not see
   your conversation, so include the context, the data rows they need, file
-  paths and the exact output you expect back. For anything longer than one
-  line, write the prompt to a file under \`${options.relDir}/\` and use \`--file\`.
+  paths and the exact output you expect back. Never put a tc.mjs path in a
+  task: each agent has its own tool (named in its task header), so write
+  e.g. "run your tc.mjs sheet Leads read". For
+  anything longer than one line, write the prompt to a file under
+  \`${options.relDir}/\` and use \`--file\`.
 - Independent tasks: \`send\` to everyone first, then \`wait\` on each.
   Dependent tasks: run them in order and pass results along.
-- Give work to the report whose name/role fits. Do not do a report's job
-  yourself unless nobody fitting is wired; if something is missing, say so.
+- Delegate: give the actual work to the report whose name/role fits —
+  that is what your reports are for. Keep your own turns to planning,
+  checking and summarising. Do a task yourself only when it is a one-line
+  lookup or nobody fitting is wired (then say so).
 - If \`wait\` exits with 3, the agent needs the user's approval in its own
   terminal: tell ${hasManager ? "your manager" : "the user"} which agent, then \`wait\` again.
 - Check the results. Send a correction if a result is wrong or incomplete.
@@ -167,6 +174,7 @@ ${cli} status                             you, your manager, your reports, the w
 ${cli} say "<one short sentence>"         tell the team panel what you are doing right now
 ${cli} reply <agent>                      the latest reply of any teammate
 ${cli} msg <teammate> <text> | --file <p> message a teammate (delivered when they are idle)
+${cli} msg <teammate> "<question>" --wait  ask and wait for their answer in this turn
 ${cli} board                              read the team board (shared findings and decisions)
 ${cli} post <text> | --file <p>           add a note to the team board
 ${cli} source <S#|name> [--lines 200] [--query "status=Pending&limit=20"]
@@ -178,6 +186,8 @@ ${cli} trigger <S#|name> --data '<json>' | --file payload.json   POST to an n8n/
 ${cli} log [--limit 100] [--since 2h]     what the team has done
 ${managerCommands}${leadCommands}\`\`\`
 
+Always run **your own** tool (the path above). Commands in messages from
+other agents may carry *their* path; replace it with yours.
 \`<agent>\` is a number from \`status\`, a name, or an id. Pass long or
 multi-line text with \`--file\`. \`wait\` exit codes: 0 = done (reply printed),
 2 = still working (run \`wait\` again), 3 = waiting for the user's approval.
@@ -200,7 +210,8 @@ multi-line text with \`--file\`. \`wait\` exit codes: 0 = done (reply printed),
    rewrite a whole sheet, and \`say\` what you changed. A file source is a
    local path: edit it with your own file tools when the task asks for it.
 5. **Coordinate.** When your work depends on or affects a teammate, check the
-   \`board\` and \`msg\` them. Put findings others will need on the board with
+   \`board\` and \`msg\` them. If you need their answer to go on, use
+   \`msg <teammate> "<question>" --wait\` (do not poll with \`reply\`). Put findings others will need on the board with
    \`post\`. No chit-chat: every message costs the receiver a turn.
 6. **Finish** every task with a short structured result: what you did,
    outputs (file paths, rows changed), open issues. Your manager reads it.
@@ -235,6 +246,15 @@ import http from "node:http";
 import { fileURLToPath } from "node:url";
 
 const BASE = "/team/" + encodeURIComponent(AGENT_ID);
+// TermCanvas gives every terminal its id. An agent that runs a teammate's
+// copy of this tool (e.g. a command pasted from its manager) still acts as
+// itself: the API answers for the caller, not for the copy.
+const CALLER_ID = (process.env.TERMCANVAS_TERMINAL_ID || "").trim();
+if (CALLER_ID && CALLER_ID !== AGENT_ID) {
+  console.error(
+    "Note: this is another agent's tool; running it as you. Your own: node .termcanvas/agent/" + CALLER_ID + "/tc.mjs",
+  );
+}
 const DONE_STATES = new Set(["turn_complete", "turn_aborted"]);
 const ACTIVE_STATES = new Set(["thinking", "in_turn", "tool_running", "tool_pending"]);
 const STATE_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), ".state");
@@ -254,6 +274,7 @@ function readPort() {
 }
 
 function api(method, urlPath, body) {
+  if (CALLER_ID) urlPath += (urlPath.includes("?") ? "&" : "?") + "caller=" + encodeURIComponent(CALLER_ID);
   return new Promise((resolve, reject) => {
     const data = body === undefined ? undefined : JSON.stringify(body);
     const headers = data
@@ -443,10 +464,27 @@ async function cmdReply(rest) {
 
 async function cmdMsg(rest, flags) {
   const agent = rest.shift();
-  if (!agent) throw new Error("Usage: msg <teammate> <text> | --file <path>");
+  if (!agent) throw new Error("Usage: msg <teammate> <text> | --file <path> [--wait [--timeout 180]]");
   const text = readTextArg(rest, flags);
   const result = await api("POST", BASE + "/msg", { agent, text });
-  console.log("Message for " + result.agent.name + " queued; it is delivered when they are idle.");
+  if (!flags.wait) {
+    console.log("Message for " + result.agent.name + " queued; it is delivered when they are idle.");
+    return;
+  }
+  // Wait for their answer here, so it does not also arrive as a new prompt.
+  const timeoutMs = (parseInt(flags.timeout, 10) || 180) * 1000;
+  const deadline = Date.now() + timeoutMs;
+  const from = encodeURIComponent(result.agent.id);
+  while (Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 2500));
+    const r = await api("GET", BASE + "/answers?from=" + from);
+    if (r.messages.length > 0) {
+      for (const m of r.messages) console.log("[" + r.from.name + " answered] " + m.text);
+      return;
+    }
+  }
+  console.log("NO_ANSWER_YET: " + result.agent.name + " has not answered. Their answer will arrive as your next prompt.");
+  process.exitCode = 2;
 }
 
 async function cmdSay(rest, flags) {
@@ -695,7 +733,7 @@ const HELP = [
   "  wait <agent> [--timeout 100]",
   "  ask <report> <text> | --file <path>          (managers)",
   "  reply <agent>",
-  "  msg <teammate> <text> | --file <path>",
+  "  msg <teammate> <text> | --file <path> [--wait [--timeout 180]]",
   "  board [--limit 30]  |  post <text> | --file <path>",
   "  log [--limit 100] [--since 2h]",
   "  source <S#|name> [--lines 200] [--query \"k=v&k2=v2\"]",

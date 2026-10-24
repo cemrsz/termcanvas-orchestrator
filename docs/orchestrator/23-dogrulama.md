@@ -31,10 +31,8 @@ ekip şablonu, başlatma bayrakları, oturum dosyası kontrolü).
 
 ## Bilinen sınırlar
 
-- Gerçek Claude CLI ile (API çağrısı yaparak) denenmedi; davranış sahte CLI
-  ve birim testleriyle doğrulandı. "Yazı yazamıyorum" şikâyetinin oturum
-  dışındaki olası bir Windows'a özgü sebebi burada yeniden üretilemedi; hâlâ
-  olursa terminalde ne göründüğünü yaz.
+- Bu notta gerçek Claude CLI kullanılmadı; gerçek Claude ve gerçek n8n ile
+  yapılan test ve bulduğu sorunlar not 24'te.
 - Windows'ta denenmedi. Başlatma bayrakları `cmd.exe` ile uyumlu olacak
   şekilde tırnak/özel karakterden arındırılıyor.
 - Bulut (headless) sunucu modu (`server/`, `headless-runtime/`) ekip

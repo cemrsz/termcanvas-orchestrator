@@ -41,8 +41,9 @@ export function writeOrchestratorWorkspace(options: {
   fs.writeFileSync(
     path.join(legacyDir, "tc.mjs"),
     buildTeamScript(options.terminalId, options.portFile),
-    "utf-8",
+    { encoding: "utf-8", mode: 0o755 },
   );
+  fs.chmodSync(path.join(legacyDir, "tc.mjs"), 0o755);
   fs.writeFileSync(
     path.join(legacyDir, "ORCHESTRATOR.md"),
     buildAgentInstructions({
@@ -103,11 +104,25 @@ function contentBlocks(content: unknown): ContentBlock[] {
  * Claude Code or Codex session transcript (JSONL).
  */
 export function extractLastAssistantReply(sessionFile: string): string | null {
+  const parts = extractLastAssistantParts(sessionFile);
+  return parts.length > 0 ? parts.join("\n\n") : null;
+}
+
+/**
+ * Only the agent's final message of its last turn — the conclusion, without
+ * the narration it wrote along the way.
+ */
+export function extractFinalAssistantMessage(sessionFile: string): string | null {
+  const parts = extractLastAssistantParts(sessionFile);
+  return parts.length > 0 ? parts[parts.length - 1] : null;
+}
+
+function extractLastAssistantParts(sessionFile: string): string[] {
   let raw: string;
   try {
     raw = readTail(sessionFile);
   } catch {
-    return null;
+    return [];
   }
 
   let replyParts: string[] = [];
@@ -158,5 +173,5 @@ export function extractLastAssistantReply(sessionFile: string): string | null {
       }
     }
   }
-  return replyParts.length > 0 ? replyParts.join("\n\n") : null;
+  return replyParts;
 }
