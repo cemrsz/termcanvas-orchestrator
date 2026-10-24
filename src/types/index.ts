@@ -10,6 +10,24 @@ import type {
   RenderDiagnosticsLogInfo,
 } from "../../shared/render-diagnostics";
 import type { SessionHistoryChangedEvent } from "../../shared/sessions";
+import type { TeamDirectory } from "../../shared/team";
+import type { TeamActivityEntry } from "../../shared/teamActivity";
+
+export interface TeamReportInfo {
+  id: string;
+  at: number;
+  title: string;
+  agentId: string;
+  agentName: string;
+  path: string;
+}
+
+export interface TeamInboxInfo {
+  port: number;
+  host: string;
+  token: string;
+  running: boolean;
+}
 import type {
   Pin,
   PinLink,
@@ -987,6 +1005,14 @@ export interface TermCanvasAPI {
   };
   composer: {
     submit: (request: ComposerSubmitRequest) => Promise<ComposerSubmitResult>;
+  };
+  team: {
+    syncDirectory: (directory: TeamDirectory) => void;
+    listActivity: (limit?: number) => Promise<TeamActivityEntry[]>;
+    listReports: () => Promise<TeamReportInfo[]>;
+    readReport: (filePath: string) => Promise<string>;
+    inboxInfo: () => Promise<TeamInboxInfo>;
+    onActivity: (callback: (entries: TeamActivityEntry[]) => void) => () => void;
   };
   orchestrator: {
     prepare: (

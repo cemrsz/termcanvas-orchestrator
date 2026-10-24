@@ -27,6 +27,7 @@ ekler; aşağıdaki liste commit sırasıyla aynıdır.
 15. [n8n okuma webhook'u ve kılavuz](15-n8n-ve-kilavuz.md) — özel Sheet'i n8n üzerinden okuma, kullanım kılavuzu
 16. [Düzeltme: oturum geri yükleme](16-oturum-geri-yukleme.md) — açılışta aynı Claude oturumları geri gelir, kapanışta kayıt
 17. [Ekip grafiği](17-ekip-grafigi.md) — kademeli yönetim, döngü engeli, ekibe paylaşılan kaynaklar, roller
+18. [Ekip motoru](18-ekip-motoru.md) — her agent'a köprü, birbirini görme, mesaj, pano, etkinlik akışı, rapor
 
 ## Nasıl kullanılır
 

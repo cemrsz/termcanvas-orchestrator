@@ -680,6 +680,24 @@ contextBridge.exposeInMainWorld("termcanvas", {
     submit: (request: unknown) =>
       ipcRenderer.invoke("composer:submit", request),
   },
+  team: {
+    syncDirectory: (directory: unknown) =>
+      ipcRenderer.send("team:sync-directory", directory),
+    listActivity: (limit?: number) =>
+      ipcRenderer.invoke("team:list-activity", limit),
+    listReports: () => ipcRenderer.invoke("team:list-reports"),
+    readReport: (filePath: string) =>
+      ipcRenderer.invoke("team:read-report", filePath) as Promise<string>,
+    inboxInfo: () => ipcRenderer.invoke("team:inbox-info"),
+    onActivity: (callback: (entries: unknown[]) => void) => {
+      const listener = (_event: unknown, entries: unknown[]) =>
+        callback(entries);
+      ipcRenderer.on("team:activity", listener);
+      return () => {
+        ipcRenderer.removeListener("team:activity", listener);
+      };
+    },
+  },
   orchestrator: {
     prepare: (terminalId: string, worktreePath: string) =>
       ipcRenderer.invoke(

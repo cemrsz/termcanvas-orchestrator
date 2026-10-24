@@ -55,6 +55,7 @@ import {
   buildOrchestratorManifest,
   listOrchestrators,
 } from "./actions/orchestrationSceneActions";
+import { startTeamDirectorySync } from "./actions/teamDirectorySync";
 import { logSlowRendererPath } from "./utils/devPerf";
 import { selectAllTerminalRuntime } from "./terminal/terminalRuntimeStore";
 import { performContextualSelectAll } from "./utils/contextualSelectAll";
@@ -318,6 +319,7 @@ export function App() {
     if (!window.termcanvas?.sessions) return;
     return initSessionStoreIPC();
   }, []);
+  useEffect(() => startTeamDirectorySync(), []);
 
   useEffect(() => {
     if (!window.termcanvas?.menu) return;

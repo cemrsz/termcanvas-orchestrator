@@ -22,6 +22,8 @@ import {
 import { extractLastAssistantReply, stripAnsi } from "./orchestrator-bridge";
 import type { OrchestratorManifest } from "../src/types/orchestration";
 import type { TerminalType } from "../src/types";
+import type { TeamHub } from "./team-hub";
+import { TeamApi, matchTeamRoute } from "./team-api";
 
 interface ApiServerDeps {
   getWindow: () => BrowserWindow | null;
@@ -29,14 +31,23 @@ interface ApiServerDeps {
   projectScanner: ProjectScanner;
   telemetryService: TelemetryService;
   taskStore: PinStore;
+  teamHub?: TeamHub;
 }
 
 export class ApiServer {
   private server: http.Server | null = null;
   private deps: ApiServerDeps;
+  private teamApi: TeamApi | null;
 
   constructor(deps: ApiServerDeps) {
     this.deps = deps;
+    this.teamApi = deps.teamHub
+      ? new TeamApi({
+          hub: deps.teamHub,
+          ptyManager: deps.ptyManager,
+          telemetryService: deps.telemetryService,
+        })
+      : null;
   }
 
   start(): Promise<number> {
@@ -220,8 +231,25 @@ export class ApiServer {
       return this.orchestratorReply(id, url.searchParams.get("agent"));
     }
 
+    const teamRoute = matchTeamRoute(pathname);
+    if (teamRoute) {
+      if (!this.teamApi) {
+        throw Object.assign(new Error("Teams are not available"), {
+          status: 503,
+        });
+      }
+      return this.teamApi.handle(
+        method,
+        teamRoute.agentId,
+        teamRoute.action,
+        url,
+        body,
+      );
+    }
+
     throw Object.assign(new Error("Not found"), { status: 404 });
   }
+
 
   private async execRenderer(code: string): Promise<any> {
     const win = this.deps.getWindow();

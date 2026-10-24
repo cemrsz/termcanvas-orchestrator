@@ -29,6 +29,7 @@ import {
   type SessionType,
 } from "./session-watcher";
 import { ApiServer } from "./api-server";
+import { submitTextToAgent } from "./team-api";
 import { PinStore } from "./pin-store";
 import { sendToWindow } from "./window-events";
 import { detectCli } from "./process-detector";
@@ -60,8 +61,14 @@ import {
 } from "./composer-submit";
 import {
   buildOrchestratorStartPrompt,
+  extractLastAssistantReply,
   writeOrchestratorWorkspace,
 } from "./orchestrator-bridge";
+import { writeAgentWorkspace } from "./team-bridge";
+import { TeamHub } from "./team-hub";
+import { TeamInboxServer, loadInboxConfig } from "./team-inbox";
+import type { TeamDirectory } from "../shared/team";
+import type { TeamActivityEntry } from "../shared/teamActivity";
 import {
   collectUsage,
   collectUsageRange,
@@ -288,8 +295,46 @@ const workspaceSavePaths = new WorkspaceSavePathRegistry((filePath) =>
 );
 let throttlingCoordinator: RenderThrottlingCoordinator | null = null;
 let hookSocketPath: string | null = null;
+const TEAM_DIR = path.join(TERMCANVAS_DIR, "team");
+let pendingTeamActivity: TeamActivityEntry[] = [];
+let teamActivityFlush: ReturnType<typeof setTimeout> | null = null;
+const teamHub = new TeamHub({
+  dataDir: TEAM_DIR,
+  getTurnState: (terminalId) =>
+    telemetryService.getTerminalSnapshot(terminalId)?.turn_state ?? null,
+  isPtyAlive: (ptyId) => !!ptyManager.getPid(ptyId),
+  deliver: (member, text) => submitTextToAgent(ptyManager, member, text),
+  writeWorkspace: (member, role) => {
+    writeAgentWorkspace({
+      terminalId: member.id,
+      worktreePath: member.worktreePath,
+      portFile: PORT_FILE,
+      role,
+    });
+  },
+  readLastReply: (transcriptPath) => extractLastAssistantReply(transcriptPath),
+  onActivity: (entries) => {
+    // Hook events arrive in bursts; batch them for the renderer.
+    pendingTeamActivity.push(...entries);
+    if (teamActivityFlush) return;
+    teamActivityFlush = setTimeout(() => {
+      teamActivityFlush = null;
+      const batch = pendingTeamActivity;
+      pendingTeamActivity = [];
+      sendToWindow(mainWindow, "team:activity", batch);
+    }, 300);
+  },
+});
+const teamInbox = new TeamInboxServer(loadInboxConfig(TEAM_DIR), (source, payload) =>
+  teamHub.handleInbound(source, payload),
+);
+const teamDeliveryTimer = setInterval(() => {
+  void teamHub.tick();
+}, 2000);
+
 const hookReceiver = new HookReceiver((event) => {
   telemetryService.recordHookEvent(event.terminal_id, event);
+  teamHub.recordHookEvent(event);
 
   if (event.hook_event_name === "SessionStart" && event.session_id) {
     sendToWindow(mainWindow, "hook:session-started", {
@@ -330,6 +375,7 @@ const apiServer = new ApiServer({
   projectScanner,
   telemetryService,
   taskStore,
+  teamHub,
 });
 
 function openPinPreviewWindow(repo: string, pinId: string): void {
@@ -1873,6 +1919,12 @@ function setupIpc() {
         terminalId,
         worktreePath,
         portFile: PORT_FILE,
+        hasManager: teamHub
+          .getDirectory()
+          .links.some(
+            (link) =>
+              link.targetKind === "terminal" && link.targetId === terminalId,
+          ),
       });
       return {
         instructionsRelPath: workspace.instructionsRelPath,
@@ -1883,6 +1935,30 @@ function setupIpc() {
       };
     },
   );
+
+  ipcMain.on("team:sync-directory", (_event, directory: TeamDirectory) => {
+    teamHub.setDirectory(directory);
+  });
+
+  ipcMain.handle("team:list-activity", (_event, limit?: number) =>
+    teamHub.listActivity({ limit: typeof limit === "number" ? limit : 500 }),
+  );
+
+  ipcMain.handle("team:list-reports", () => teamHub.listReports());
+
+  ipcMain.handle("team:read-report", (_event, filePath: string) =>
+    teamHub.readReport(filePath),
+  );
+
+  ipcMain.handle("team:inbox-info", () => {
+    const config = teamInbox.getConfig();
+    return {
+      port: teamInbox.port ?? config.port,
+      host: config.host,
+      token: config.token,
+      running: teamInbox.port !== null,
+    };
+  });
 
   ipcMain.handle(
     "composer:submit",
@@ -2539,6 +2615,12 @@ app.whenReady().then(async () => {
     hookSocketPath = null;
     console.error("[HookReceiver] Startup disabled:", error);
   }
+  try {
+    const inboxPort = await teamInbox.start();
+    if (isDev) console.log(`[TeamInbox] http://127.0.0.1:${inboxPort}/inbox/…`);
+  } catch (error) {
+    console.error("[TeamInbox] Startup disabled:", error);
+  }
   let previousSessionHistoryScope = new Map<string, string>();
   sessionScanner.start((sessions) => {
     const nextSessionHistoryScope = buildSessionHistoryScope(sessions);
@@ -2638,6 +2720,8 @@ app.on("will-quit", (event) => {
     fileTreeWatcher.unwatchAll();
     sessionWatcher.unwatchAll();
     hookReceiver.stop();
+    teamInbox.stop();
+    clearInterval(teamDeliveryTimer);
     stopAutoUpdater();
     apiServer.stop();
     cleanupPortFile();
