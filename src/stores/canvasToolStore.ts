@@ -14,10 +14,11 @@ interface CanvasToolStore {
   setSpaceHeld: (held: boolean) => void;
 }
 
-// Default to Hand for canvas navigation. Terminal tiles opt out of the inherited
-// pan cursor in CSS so the terminal surface still feels like a native terminal.
+// Default to Select: a left drag on empty canvas draws a selection box (then
+// Delete closes what it caught). The wheel, Space+drag and middle drag still
+// pan; H switches to Hand, where a left drag pans too.
 export const useCanvasToolStore = create<CanvasToolStore>((set) => ({
-  tool: "hand",
+  tool: "select",
   spaceHeld: false,
   setTool: (tool) => set({ tool }),
   setSpaceHeld: (held) => set({ spaceHeld: held }),

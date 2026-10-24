@@ -22,8 +22,25 @@ import { useDrawingStore } from "../stores/drawingStore";
 import { useCanvasToolStore } from "../stores/canvasToolStore";
 import { type SelectedItem } from "../stores/selectionStore";
 import { screenPointToCanvasPoint } from "../canvas/viewportBounds";
+import { isEditableTarget } from "./shortcutTarget";
 
 const BOX_SELECT_BLOCK_SELECTOR = "[data-scene-box-select-block]";
+/** Movement below this is a plain click on the canvas, not a marquee. */
+const CLICK_SLOP_PX = 4;
+
+/**
+ * Stops the click the browser fires right after the mouseup that ends a
+ * drag. Called from that mouseup, so the click is the next one dispatched;
+ * the listener is removed on the next task in case none comes.
+ */
+export function swallowNextClick(target: Window): void {
+  const swallow = (event: Event) => {
+    event.stopPropagation();
+    event.preventDefault();
+  };
+  target.addEventListener("click", swallow, { capture: true, once: true });
+  setTimeout(() => target.removeEventListener("click", swallow, true), 0);
+}
 
 function rectsIntersect(
   a: { x: number; y: number; w: number; h: number },
@@ -173,6 +190,14 @@ export function useBoxSelect() {
 
     e.preventDefault();
     e.stopPropagation();
+    // preventDefault keeps focus where it was. If that is a terminal's input,
+    // Delete would be typed into it instead of closing the selection.
+    if (
+      document.activeElement instanceof HTMLElement &&
+      isEditableTarget(document.activeElement)
+    ) {
+      document.activeElement.blur();
+    }
 
     const start = screenToCanvas(e.clientX, e.clientY);
     setSceneSelectionRect({ x: start.x, y: start.y, w: 0, h: 0 });
@@ -188,6 +213,14 @@ export function useBoxSelect() {
     };
 
     const handleUp = (ev: MouseEvent) => {
+      // A press and release on the pane is also a click, and the pane's
+      // click handler clears the selection this drag is about to set.
+      if (
+        Math.abs(ev.clientX - e.clientX) > CLICK_SLOP_PX ||
+        Math.abs(ev.clientY - e.clientY) > CLICK_SLOP_PX
+      ) {
+        swallowNextClick(window);
+      }
       const end = screenToCanvas(ev.clientX, ev.clientY);
       const rect = {
         x: start.x,

@@ -140,3 +140,26 @@ test("activateSingleBoxSelectionItem clears focus when selecting a single card",
     useSelectionStore.setState(previousSelectionState);
   }
 });
+
+test("swallowNextClick stops only the click that ends a drag", async () => {
+  const { JSDOM } = await import("jsdom");
+  const { swallowNextClick } = await import("../src/hooks/useBoxSelect.ts");
+  const dom = new JSDOM("<!doctype html><html><body><div id='pane'></div></body></html>");
+  const pane = dom.window.document.getElementById("pane")!;
+  let paneClicks = 0;
+  pane.addEventListener("click", () => paneClicks++);
+  const click = () =>
+    pane.dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true }));
+
+  swallowNextClick(dom.window as unknown as Window);
+  click();
+  assert.equal(paneClicks, 0);
+  click();
+  assert.equal(paneClicks, 1);
+
+  // A drag that ends without a click must not eat a later, unrelated click.
+  swallowNextClick(dom.window as unknown as Window);
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  click();
+  assert.equal(paneClicks, 2);
+});

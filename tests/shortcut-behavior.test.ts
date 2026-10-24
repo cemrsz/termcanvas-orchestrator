@@ -237,9 +237,9 @@ test("terminal shortcut target recognizes xterm helper textarea", () => {
   assert.equal(isTerminalShortcutTarget(createTarget("TEXTAREA")), false);
 });
 
-test("canvas tool defaults to hand for canvas navigation", () => {
-  assert.equal(useCanvasToolStore.getState().tool, "hand");
-  assert.equal(isPanModeActive(), true);
+test("canvas tool defaults to select so a left drag box-selects", () => {
+  assert.equal(useCanvasToolStore.getState().tool, "select");
+  assert.equal(isPanModeActive(), false);
 });
 
 test("canvas pan mode is explicit via hand tool or Space hold", () => {
@@ -249,7 +249,7 @@ test("canvas pan mode is explicit via hand tool or Space hold", () => {
   useCanvasToolStore.setState({ tool: "select", spaceHeld: true });
   assert.equal(isPanModeActive(), true);
 
-  useCanvasToolStore.setState({ tool: "hand", spaceHeld: false });
+  useCanvasToolStore.setState({ tool: "select", spaceHeld: false });
 });
 
 test("terminal cursor CSS opts out of canvas pan cursor inheritance", () => {

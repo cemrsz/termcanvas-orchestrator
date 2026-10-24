@@ -49,6 +49,7 @@ import { usePinDragStore } from "../stores/pinDragStore";
 import { usePinStore } from "../stores/pinStore";
 import { useHandoffDragStore } from "../stores/handoffDragStore";
 import { useNotificationStore } from "../stores/notificationStore";
+import { useSelectionStore } from "../stores/selectionStore";
 import { useViewportFocusStore } from "../stores/viewportFocusStore";
 import { TERMINAL_TYPE_CONFIG } from "./terminalTypeConfig";
 import { AgentRenderer } from "../components/agent/AgentRenderer";
@@ -269,6 +270,11 @@ export function TerminalTile({
   );
   const copiedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const tileRef = useRef<HTMLDivElement>(null);
+  const isSelected = useSelectionStore((state) =>
+    state.selectedItems.some(
+      (item) => item.type === "terminal" && item.terminalId === terminal.id,
+    ),
+  );
   const settledFitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [containerEl, setContainerEl] = useState<HTMLDivElement | null>(null);
   const containerRef = useCallback((node: HTMLDivElement | null) => {
@@ -964,7 +970,8 @@ export function TerminalTile({
       style={{
         width: width,
         height: terminal.minimized ? "auto" : height,
-        outline: "none",
+        outline: isSelected ? "2px solid var(--accent)" : "none",
+        outlineOffset: isSelected ? -2 : undefined,
       }}
       onClick={(e) => {
         e.stopPropagation();

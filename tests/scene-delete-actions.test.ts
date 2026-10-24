@@ -108,3 +108,90 @@ test("deleteSelectedSceneItems removes selected annotations and cards", async ()
     useBrowserCardStore.setState(previousBrowserState);
   }
 });
+
+async function withTwoTerminals(
+  run: (modules: {
+    useProjectStore: typeof import("../src/stores/projectStore.ts").useProjectStore;
+    useSelectionStore: typeof import("../src/stores/selectionStore.ts").useSelectionStore;
+    deleteSelectedSceneItems: typeof import("../src/actions/sceneDeleteActions.ts").deleteSelectedSceneItems;
+  }) => void,
+) {
+  installSceneDeleteGlobals();
+  const { useProjectStore, createTerminal } = await import("../src/stores/projectStore.ts");
+  const { useSelectionStore } = await import("../src/stores/selectionStore.ts");
+  const { deleteSelectedSceneItems } = await import(
+    "../src/actions/sceneDeleteActions.ts"
+  );
+  const previousProjectState = useProjectStore.getState();
+  const previousSelectionState = useSelectionStore.getState();
+
+  try {
+    useProjectStore.setState({
+      focusedProjectId: null,
+      focusedWorktreeId: null,
+      projects: [
+        {
+          id: "project-1",
+          name: "Project One",
+          path: "/tmp/project-1",
+          position: { x: 0, y: 0 },
+          collapsed: false,
+          zIndex: 0,
+          worktrees: [
+            {
+              id: "worktree-1",
+              name: "main",
+              path: "/tmp/project-1",
+              position: { x: 0, y: 0 },
+              collapsed: false,
+              terminals: [
+                { ...createTerminal("shell"), id: "t-1" },
+                { ...createTerminal("shell"), id: "t-2" },
+                { ...createTerminal("shell"), id: "t-3" },
+              ],
+            },
+          ],
+        },
+      ],
+    });
+    useSelectionStore.setState({
+      selectedItems: ["t-1", "t-2"].map((terminalId) => ({
+        type: "terminal" as const,
+        projectId: "project-1",
+        worktreeId: "worktree-1",
+        terminalId,
+      })),
+      selectionRect: null,
+    });
+    run({ useProjectStore, useSelectionStore, deleteSelectedSceneItems });
+  } finally {
+    useProjectStore.setState(previousProjectState);
+    useSelectionStore.setState(previousSelectionState);
+  }
+}
+
+test("deleteSelectedSceneItems closes selected terminals after confirmation", async () => {
+  await withTwoTerminals(({ useProjectStore, useSelectionStore, deleteSelectedSceneItems }) => {
+    const asked: number[] = [];
+    assert.equal(
+      deleteSelectedSceneItems((count) => {
+        asked.push(count);
+        return true;
+      }),
+      true,
+    );
+    assert.deepEqual(asked, [2]);
+    const remaining = useProjectStore.getState().projects[0].worktrees[0].terminals;
+    assert.deepEqual(remaining.map((terminal) => terminal.id), ["t-3"]);
+    assert.deepEqual(useSelectionStore.getState().selectedItems, []);
+  });
+});
+
+test("deleteSelectedSceneItems keeps terminals when the close is not confirmed", async () => {
+  await withTwoTerminals(({ useProjectStore, useSelectionStore, deleteSelectedSceneItems }) => {
+    assert.equal(deleteSelectedSceneItems(() => false), true);
+    const remaining = useProjectStore.getState().projects[0].worktrees[0].terminals;
+    assert.equal(remaining.length, 3);
+    assert.equal(useSelectionStore.getState().selectedItems.length, 2);
+  });
+});
