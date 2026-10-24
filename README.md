@@ -1,4 +1,4 @@
-> **Bu fork'ta:** n8n tarzı bir orkestratör agent eklendi. Tek agent'a komut verirsin; o, canvas'ta kabloyla bağlı agent'lara iş dağıtır ve bağlı kaynakları (Google Sheet, n8n webhook, API, dosya, not) kullanır. Kullanım ve 15 adımlık değişiklik günlüğü: [docs/orchestrator](docs/orchestrator/README.md)
+> **Bu fork'ta:** n8n tarzı agent ekipleri. Sağ tık → *New Team* ile 1 Opus lider, 4 Sonnet yönetici ve 20 Haiku işçiden oluşan hazır bir ekip kurulur; kabloyla bağlı agent'lar birbirini ve ekibe bağlı kaynakları (Google Sheet, n8n webhook, API, dosya, not) görür, Sheet'leri değiştirebilir, n8n çıktıları otomatik olarak ekibe gelir. Solda *Team* sekmesi kimin ne yaptığını canlı gösterir; uygulama her açılışta aynı Claude oturumlarıyla açılır. Kullanım ve değişiklik günlüğü: [docs/orchestrator](docs/orchestrator/README.md)
 
 <div align="center">
 

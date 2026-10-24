@@ -9,8 +9,10 @@
 //
 // <inboxUrl> is the address shown on the n8n source node in TermCanvas
 // ("Workflow output → team"). Use its "docker" variant (host.docker.internal)
-// when n8n runs in Docker. With --node, a single HTTP Request node is also
-// written; paste its JSON straight into an existing workflow's canvas.
+// when n8n runs in Docker. With --node, the two nodes (Paketle + HTTP) are
+// also written as a snippet: paste it straight into an existing workflow's
+// canvas and connect your last node to "Paketle". The sub-workflow must be
+// published (n8n 2.x runs only published sub-workflows).
 import fs from "node:fs";
 import crypto from "node:crypto";
 
@@ -38,6 +40,17 @@ return [{
     items,
   },
 }];`;
+
+function packNode(position) {
+  return {
+    id: crypto.randomUUID(),
+    name: "Paketle",
+    type: "n8n-nodes-base.code",
+    typeVersion: 2,
+    position,
+    parameters: { jsCode: packCode },
+  };
+}
 
 function httpNode(position) {
   return {
@@ -70,14 +83,7 @@ const workflow = {
       position: [0, 0],
       parameters: { inputSource: "passthrough" },
     },
-    {
-      id: crypto.randomUUID(),
-      name: "Paketle",
-      type: "n8n-nodes-base.code",
-      typeVersion: 2,
-      position: [240, 0],
-      parameters: { jsCode: packCode },
-    },
+    packNode([240, 0]),
     httpNode([480, 0]),
   ],
   connections: {
@@ -93,8 +99,14 @@ fs.writeFileSync(outPath, JSON.stringify(workflow, null, 2), "utf-8");
 console.log("wrote", outPath);
 
 if (nodeOut) {
-  // n8n accepts this shape on paste: { nodes, connections }.
-  const snippet = { nodes: [httpNode([0, 0])], connections: {} };
+  // n8n accepts this shape on paste: { nodes, connections }. Connect the
+  // last node of your workflow to "Paketle".
+  const snippet = {
+    nodes: [packNode([0, 0]), httpNode([240, 0])],
+    connections: {
+      Paketle: { main: [[{ node: "TermCanvas'a gönder", type: "main", index: 0 }]] },
+    },
+  };
   fs.writeFileSync(nodeOut, JSON.stringify(snippet, null, 2), "utf-8");
   console.log("wrote", nodeOut, "(paste into an n8n canvas)");
 }

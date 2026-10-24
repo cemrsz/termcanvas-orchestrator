@@ -66,7 +66,11 @@ import {
 } from "./orchestrator-bridge";
 import { writeAgentWorkspace } from "./team-bridge";
 import { TeamHub } from "./team-hub";
-import { TeamInboxServer, loadInboxConfig } from "./team-inbox";
+import {
+  TeamInboxServer,
+  loadInboxConfig,
+  saveInboxConfig,
+} from "./team-inbox";
 import type { TeamDirectory } from "../shared/team";
 import type { TeamActivityEntry } from "../shared/teamActivity";
 import {
@@ -332,8 +336,10 @@ const teamHub = new TeamHub({
     }, 300);
   },
 });
-const teamInbox = new TeamInboxServer(loadInboxConfig(TEAM_DIR), (source, payload) =>
-  teamHub.handleInbound(source, payload),
+const teamInbox = new TeamInboxServer(
+  loadInboxConfig(TEAM_DIR),
+  (source, payload) => teamHub.handleInbound(source, payload),
+  (config) => saveInboxConfig(TEAM_DIR, config),
 );
 const teamDeliveryTimer = setInterval(() => {
   void teamHub.tick();

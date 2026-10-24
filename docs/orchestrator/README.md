@@ -1,11 +1,13 @@
 # TermCanvas Orkestratör
 
 Bu fork, [TermCanvas](https://github.com/blueberrycongee/termcanvas) v0.39.10'a
-n8n tarzı bir **orkestratör agent** ekler: tek bir agent'a komut verirsin, o da
-canvas'ta kabloyla bağlı agent'lara iş dağıtır ve bağlı kaynakları (Google Sheet,
-n8n webhook, HTTP API, yerel dosya, not) kullanır.
+n8n tarzı **agent ekipleri** ekler: tek bir agent'a (lider) komut verirsin, o
+canvas'ta kabloyla bağlı yöneticilere ve agent'lara iş dağıtır. Kabloyla bağlı
+herkes birbirini ve ekibe bağlı kaynakları (Google Sheet, n8n webhook, HTTP API,
+yerel dosya, not) görür; Sheet'leri değiştirebilir, n8n çıktıları otomatik
+olarak ekibe gelir, büyük işlerin sonunda lider okunaklı bir rapor yazar.
 
-Değişiklikler 15 commit halinde eklendi. Her commit kendi kısa notunu bu klasöre
+Değişiklikler commit commit eklendi. Her commit kendi kısa notunu bu klasöre
 ekler; aşağıdaki liste commit sırasıyla aynıdır.
 
 ## Commit günlüğü
@@ -32,40 +34,78 @@ ekler; aşağıdaki liste commit sırasıyla aynıdır.
 20. [Sheet yazma](20-sheet-yazma.md) — Apps Script köprüsüyle agent'lar satır ekler ve günceller
 21. [Hazır ekip](21-hazir-ekip.md) — sağ tık → 1 Opus · 4 Sonnet · 20 Haiku, org şeması yerleşimi
 22. [Ekip paneli](22-ekip-paneli.md) — solda canlı "şunu yapıyorum" akışı, kadro ve rapor okuyucu
+23. [Kılavuz ve doğrulama](23-dogrulama.md) — güncel kullanım kılavuzu, uçtan uca testler, bilinen sınırlar
 
 ## Nasıl kullanılır
 
-1. Boş canvas'a sağ tıkla → **New Orchestrator**. Projedeki agent terminalleri
-   (Claude, Codex, …) otomatik olarak ona bağlanır.
-2. Agent'lara başlıklarından rol adı ver (ör. "Copywriter"). Orkestratör işi bu
-   isimlere bakarak dağıtır; isimler yeniden başlatmada korunur.
-3. Kaynak eklemek için sağ tık → **Add Google Sheet / n8n Webhook / HTTP API /
-   Local File / Note**, sonra düğümün adresini ve notunu doldur. Tek orkestratör
-   varsa yeni kaynak ona otomatik bağlanır.
-4. Kablo çekmek için orkestratörün kenarındaki noktadan bir agent'a ya da kaynağa
-   sürükle; kesmek için kablonun ortasındaki × işaretine tıkla. Terminal başlığına
-   sağ tıklayınca *Connect / Disconnect / Make Orchestrator* da var.
-5. Komutu sadece orkestratörün terminaline yaz.
+### Hızlı başlangıç: hazır ekip
 
-Orkestratör, projenin içindeki `.termcanvas/orchestrator/<id>/tc.mjs` aracını
-kullanır:
+1. Boş kanvasa sağ tıkla → **New Team (1 Opus · 4 Sonnet · 20 Haiku)**
+   (daha hafifi: **New Small Team**). 25 Claude terminali org şeması gibi
+   yerleşir: en üstte **Director** (Opus), altında Research / Content /
+   Data / Ops yöneticileri (Sonnet), her birinin altında 5 işçi (Haiku).
+2. Komutu yalnızca **Director**'ın terminaline yaz. Director işi
+   yöneticilere, yöneticiler işçilere dağıtır; büyük işlerin sonunda
+   Director bir rapor yazar.
+3. Sol paneldeki **Team** sekmesinden kimin ne yaptığını tek cümlelik
+   satırlarla canlı izle; raporları oradan aç.
+4. Uygulamayı kapatıp açtığında aynı 25 oturum, aynı konuşmalarıyla geri
+   gelir.
 
-| Komut | Ne yapar |
-| --- | --- |
-| `status` | Bağlı agent'ları ve kaynakları listeler |
-| `send <agent> <metin>` / `--file` | Agent'a görev yollar |
-| `wait <agent>` | Agent'ın turu bitene kadar bekler, cevabını yazar |
-| `ask <agent> <metin>` | `send` + `wait` |
-| `reply <agent>` | Son cevabı tekrar gösterir |
-| `source <kaynak> [--query]` | Kaynağı okur (Sheet → CSV, n8n/API → GET, dosya, not) |
-| `trigger <kaynak> --data '<json>'` | n8n/API kaynağına POST atar (eylem) |
+### Kendi ekibini kurmak
 
-Notlar:
+1. Boş kanvasa sağ tıkla → **New Orchestrator**. Projedeki boşta duran agent
+   terminalleri (Claude, Codex, …) ona bağlanır.
+2. Agent'lara başlıklarından ad ver (ör. "Copywriter"); Team panelinde ✎ ile
+   rol notu ekle. Adlar ve roller yeniden başlatmada korunur.
+3. Kademeli ekip için bir agent'ı **Make Orchestrator** ile yönetici yap ve
+   onu lidere bağla: liderin portundan yöneticinin **üst kenarındaki** porta
+   sürükle. Döngü (bir yöneticinin kendi altındakine bağlanması) engellenir.
+4. Kaynak eklemek için sağ tık → **Add Google Sheet / n8n Webhook / HTTP API /
+   Local File / Note**; adresini ve notunu doldur, bir yöneticiye bağla.
+   **Kaynak, ekipte kime bağlanırsa bağlansın tüm ekip onu görür.**
+5. Kabloyla birbirine bağlı her agent ve kaynak aynı ekiptir: herkes
+   kadroyu, kimin ne yaptığını ve ekip kaynaklarını görür; birbirine mesaj
+   atabilir. Kesmek için kablonun ortasındaki × işaretine tıkla.
 
-- Google Sheet doğrudan CSV olarak okunur; bunun için "bağlantıya sahip olan
-  herkes görüntüleyebilir" paylaşımı gerekir. Özel Sheet için
-  [`integrations/n8n`](../../integrations/n8n/build-leads-webhook.mjs) ile bir
-  okuma webhook'u kur ve onu **n8n Webhook** kaynağı olarak bağla (bkz. not 15).
-- Orkestratör yalnızca kabloyla bağlı agent'lara iş gönderebilir.
-- Dış dünyayı değiştiren `trigger` çağrılarını yalnızca komut bunu açıkça
-  istediğinde yapacak şekilde talimatlandırılmıştır.
+### Agent'ların aracı (`tc.mjs`)
+
+Her ekip üyesinin projesinde `.termcanvas/agent/<id>/tc.mjs` ve kuralları
+(`AGENT.md`) var. Agent'lar bunu kendileri kullanır; ekip komutları onay
+istemez.
+
+| Komut | Kim | Ne yapar |
+| --- | --- | --- |
+| `status` | herkes | Ben, yöneticim, astlarım, tüm ekip (durum + şu an ne yapıyor), kaynaklar |
+| `say "<cümle>"` | herkes | Team paneline "şunu yapıyorum" |
+| `msg <ekip arkadaşı> <metin>` | herkes | Mesaj; alıcı boşa çıkınca teslim edilir |
+| `reply <agent>` | herkes | Bir ekip arkadaşının son cevabı |
+| `board` / `post <metin>` | herkes | Ortak ekip panosu |
+| `source <kaynak> [--query]` | herkes | Kaynağı okur (Sheet, n8n/API GET, dosya, not) |
+| `sheet <kaynak> read/append/update/upsert` | herkes | Sheet satırı okur, ekler, günceller (not 20) |
+| `trigger <kaynak> --data '<json>'` | herkes | n8n/API kaynağına POST (dış dünyada eylem) |
+| `log [--since 2h]` | herkes | Ekibin yaptıkları |
+| `send` / `wait` / `ask <ast>` | yöneticiler | Doğrudan astlara görev ver, cevabı bekle |
+| `report --title … --file …` | en üstteki lider | Son raporu kaydet; Team panelinde açılır |
+
+### n8n çıktıları agent'a
+
+n8n kaynak düğümündeki "Workflow output → team" adresini kopyala ve
+iş akışının sonuna bir HTTP POST (ya da
+[`build-termcanvas-notify.mjs`](../../integrations/n8n/build-termcanvas-notify.mjs)
+ile üretilen alt iş akışı) koy. Çıktı, kaynağın bağlı olduğu yöneticiye
+otomatik olarak bir sonraki görevi olarak gelir (not 19).
+
+### Notlar
+
+- Özel bir Google Sheet'i okumak **ve yazmak** için
+  [Apps Script köprüsünü](../../integrations/google-sheets/termcanvas-sheet-bridge.gs)
+  kur ve adresini Sheet düğümünün ikinci alanına yapıştır (not 20). Yalnızca
+  okumak için n8n okuma webhook'u da kullanılabilir (not 15). Herkese açık
+  bir Sheet doğrudan CSV olarak okunur.
+- Yöneticiler yalnızca doğrudan astlarına görev verebilir; mesaj her ekip
+  arkadaşına atılabilir.
+- Dış dünyayı değiştiren `trigger` ve Sheet yazmaları yalnızca komut bunu
+  istediğinde yapılacak şekilde talimatlandırılmıştır.
+- Ekip etkinliği, pano ve rapor dizini `~/.termcanvas/team/` altında; raporlar
+  projede `.termcanvas/reports/` altında.

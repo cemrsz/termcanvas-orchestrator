@@ -197,7 +197,8 @@ multi-line text with \`--file\`. \`wait\` exit codes: 0 = done (reply printed),
 4. **Data.** Read team sources yourself and pass on only the rows a task
    needs. A sheet with a write bridge can be changed with \`sheet append\` /
    \`sheet update\`: change only the rows the task is about, never delete or
-   rewrite a whole sheet, and \`say\` what you changed.
+   rewrite a whole sheet, and \`say\` what you changed. A file source is a
+   local path: edit it with your own file tools when the task asks for it.
 5. **Coordinate.** When your work depends on or affects a teammate, check the
    \`board\` and \`msg\` them. Put findings others will need on the board with
    \`post\`. No chit-chat: every message costs the receiver a turn.

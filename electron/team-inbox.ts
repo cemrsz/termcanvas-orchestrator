@@ -75,6 +75,8 @@ export class TeamInboxServer {
   constructor(
     private config: TeamInboxConfig,
     private readonly handler: InboxHandler,
+    /** Called when the configured port was taken and another one is used. */
+    private readonly onPortMoved?: (config: TeamInboxConfig) => void,
   ) {}
 
   get port(): number | null {
@@ -93,6 +95,11 @@ export class TeamInboxServer {
       try {
         await this.listen(port);
         this.boundPort = port;
+        if (port !== this.config.port) {
+          // Keep the new port from now on: n8n workflows hold the URL.
+          this.config = { ...this.config, port };
+          this.onPortMoved?.(this.config);
+        }
         return port;
       } catch (err) {
         lastError = err;
