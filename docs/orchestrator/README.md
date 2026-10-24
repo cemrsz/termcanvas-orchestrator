@@ -28,6 +28,7 @@ ekler; aşağıdaki liste commit sırasıyla aynıdır.
 16. [Düzeltme: oturum geri yükleme](16-oturum-geri-yukleme.md) — açılışta aynı Claude oturumları geri gelir, kapanışta kayıt
 17. [Ekip grafiği](17-ekip-grafigi.md) — kademeli yönetim, döngü engeli, ekibe paylaşılan kaynaklar, roller
 18. [Ekip motoru](18-ekip-motoru.md) — her agent'a köprü, birbirini görme, mesaj, pano, etkinlik akışı, rapor
+19. [n8n çıktıları](19-n8n-ciktilari.md) — sabit portlu gelen kutusu, iş akışı çıktısı otomatik olarak agent'a
 
 ## Nasıl kullanılır
 

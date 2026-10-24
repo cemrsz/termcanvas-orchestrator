@@ -20,6 +20,8 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { useOrchestrationStore } from "../stores/orchestrationStore";
+import { useTeamStore } from "../stores/teamStore";
+import type { TeamInboxInfo } from "../types";
 import type {
   OrchestrationLink,
   OrchestrationSource,
@@ -306,6 +308,9 @@ function SourceNode({ data }: NodeProps<SourceFlowNode>) {
           }
           onMouseDown={(e) => e.stopPropagation()}
         />
+        {(source.kind === "n8n" || source.kind === "api") && (
+          <InboundUrlRow sourceId={source.id} color={meta.color} />
+        )}
         <div className="tc-caption flex items-center gap-1.5 text-[var(--text-faint)]">
           <span
             className="inline-block h-1.5 w-1.5 rounded-full"
@@ -318,6 +323,65 @@ function SourceNode({ data }: NodeProps<SourceFlowNode>) {
             : "Not wired — drag from an orchestrator's port to here"}
         </div>
       </div>
+    </div>
+  );
+}
+
+/** Address an n8n workflow POSTs to so its output reaches this source's team. */
+export function buildInboxUrl(
+  inbox: TeamInboxInfo,
+  sourceId: string,
+  host: "local" | "docker",
+): string {
+  const hostname = host === "docker" ? "host.docker.internal" : "127.0.0.1";
+  return `http://${hostname}:${inbox.port}/inbox/${inbox.token}/${encodeURIComponent(sourceId)}`;
+}
+
+function InboundUrlRow({ sourceId, color }: { sourceId: string; color: string }) {
+  const inbox = useTeamStore((state) => state.inbox);
+  const [host, setHost] = useState<"local" | "docker">("local");
+  const [copied, setCopied] = useState(false);
+  if (!inbox) return null;
+  const url = buildInboxUrl(inbox, sourceId, host);
+  return (
+    <div className="flex flex-col gap-1">
+      <div className="tc-caption flex items-center gap-1.5 text-[var(--text-faint)]">
+        <span style={{ color }}>⇢</span>
+        <span className="flex-1">
+          Workflow output → team (POST JSON here)
+          {!inbox.running && " · inbox is not running"}
+        </span>
+        <button
+          type="button"
+          className="nodrag rounded px-1 hover:text-[var(--text-primary)] hover:bg-[var(--border)]"
+          title="Use host.docker.internal when n8n runs in Docker"
+          onMouseDown={(e) => e.stopPropagation()}
+          onClick={(e) => {
+            e.stopPropagation();
+            setHost(host === "local" ? "docker" : "local");
+          }}
+        >
+          {host === "local" ? "localhost" : "docker"}
+        </button>
+      </div>
+      <button
+        type="button"
+        className="nodrag tc-meta tc-mono w-full truncate rounded border border-dashed border-[var(--border)] bg-[var(--bg)] px-2 py-1 text-left text-[var(--text-secondary)] hover:border-[var(--text-secondary)]"
+        title="Copy. Add an HTTP Request node (POST, JSON body) at the end of your n8n workflow with this URL — see integrations/n8n."
+        onMouseDown={(e) => e.stopPropagation()}
+        onClick={(e) => {
+          e.stopPropagation();
+          void navigator.clipboard
+            .writeText(url)
+            .then(() => {
+              setCopied(true);
+              setTimeout(() => setCopied(false), 1200);
+            })
+            .catch(() => {});
+        }}
+      >
+        {copied ? "Copied ✓" : url}
+      </button>
     </div>
   );
 }
