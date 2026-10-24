@@ -39,6 +39,17 @@ ekler; aşağıdaki liste commit sırasıyla aynıdır.
 
 ## Nasıl kullanılır
 
+### Windows'ta kurulum
+
+Depo klasöründe tek komut — eksikse Node 22+, pnpm ve Claude CLI'yi kurar,
+bağımlılıkları yükler ve uygulamayı açar (tekrar çalıştırmak güvenli):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\setup-windows.ps1
+```
+
+Sonraki açılışlarda yalnızca `pnpm dev` yeterli.
+
 ### Hızlı başlangıç: hazır ekip
 
 1. Boş kanvasa sağ tıkla → **New Team (1 Opus · 4 Sonnet · 20 Haiku)**
