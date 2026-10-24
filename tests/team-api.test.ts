@@ -280,5 +280,8 @@ test("msg --wait returns the teammate's answer in the same turn, once", async (t
   h.turnStates.w1 = "turn_complete";
   await h.hub.tick();
   assert.equal(h.delivered.filter((d) => d.to === "w1").length, 0, "the answer is not delivered again");
-  assert.ok(fs.statSync(path.join(h.repo, ".termcanvas", "agent", "w1", "tc.mjs")).mode & 0o100);
+  // Windows has no executable bit; Git Bash runs `./tc.mjs` from its shebang.
+  if (process.platform !== "win32") {
+    assert.ok(fs.statSync(path.join(h.repo, ".termcanvas", "agent", "w1", "tc.mjs")).mode & 0o100);
+  }
 });
