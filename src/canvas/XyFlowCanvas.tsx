@@ -74,8 +74,14 @@ import { useTerminalRuntimeStateStore } from "../stores/terminalRuntimeStateStor
 import {
   addOrchestrationSourceInScene,
   createOrchestratorInScene,
+  createTeamInScene,
   refreshOrchestratorWorkspaces,
 } from "../actions/orchestrationSceneActions";
+import {
+  FULL_TEAM,
+  SMALL_TEAM,
+  type TeamTemplate,
+} from "../actions/teamTemplate";
 import type { OrchestrationSourceKind } from "../types/orchestration";
 import {
   getCanvasLeftInset,
@@ -430,6 +436,20 @@ function XyFlowCanvasInner() {
     });
   }, [contextMenu, resolveContextWorktree]);
 
+  const handleContextMenuTeam = useCallback(
+    (template: TeamTemplate) => {
+      if (!contextMenu) return;
+      const target = resolveContextWorktree();
+      if (!target) return;
+      void createTeamInScene({
+        ...target,
+        position: { x: contextMenu.flowX, y: contextMenu.flowY },
+        template,
+      });
+    },
+    [contextMenu, resolveContextWorktree],
+  );
+
   const handleContextMenuSource = useCallback(
     (kind: OrchestrationSourceKind) => {
       if (!contextMenu) return;
@@ -474,7 +494,10 @@ function XyFlowCanvasInner() {
     useNodesState<AnyCanvasFlowNode>(projectedNodes);
 
   const edges = useMemo(() => {
-    const terminalRects = new Map<string, { x: number; y: number; w: number }>();
+    const terminalRects = new Map<
+      string,
+      { x: number; y: number; w: number; h: number }
+    >();
     const busyTerminalIds = new Set<string>();
     for (const project of projects) {
       for (const worktree of project.worktrees) {
@@ -484,6 +507,7 @@ function XyFlowCanvasInner() {
             x: terminal.x,
             y: terminal.y,
             w: terminal.width,
+            h: terminal.height,
           });
           if (runtimeStates[terminal.id]?.status === "active") {
             busyTerminalIds.add(terminal.id);
@@ -933,6 +957,14 @@ function XyFlowCanvasInner() {
               onClick: () => handleContextMenuPick("lazygit"),
             },
             { type: "separator" },
+            {
+              label: "New Team (1 Opus · 4 Sonnet · 20 Haiku)",
+              onClick: () => handleContextMenuTeam(FULL_TEAM),
+            },
+            {
+              label: "New Small Team (1 Opus · 2 Sonnet · 6 Haiku)",
+              onClick: () => handleContextMenuTeam(SMALL_TEAM),
+            },
             {
               label: "New Orchestrator",
               onClick: handleContextMenuOrchestrator,

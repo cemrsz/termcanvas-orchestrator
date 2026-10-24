@@ -30,6 +30,7 @@ ekler; aşağıdaki liste commit sırasıyla aynıdır.
 18. [Ekip motoru](18-ekip-motoru.md) — her agent'a köprü, birbirini görme, mesaj, pano, etkinlik akışı, rapor
 19. [n8n çıktıları](19-n8n-ciktilari.md) — sabit portlu gelen kutusu, iş akışı çıktısı otomatik olarak agent'a
 20. [Sheet yazma](20-sheet-yazma.md) — Apps Script köprüsüyle agent'lar satır ekler ve günceller
+21. [Hazır ekip](21-hazir-ekip.md) — sağ tık → 1 Opus · 4 Sonnet · 20 Haiku, org şeması yerleşimi
 
 ## Nasıl kullanılır
 

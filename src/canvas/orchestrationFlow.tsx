@@ -123,9 +123,13 @@ const portStyle = (color: string, side: PortSide) => ({
   background: "var(--surface)",
 });
 
+/** Ports on the top/bottom edge sit left of centre, clear of the resizer. */
+const EDGE_PORT_LEFT = 44;
+
 /**
- * Ports exist on both sides; each wire uses the pair that faces the other
- * node, so wires never run underneath a tile.
+ * Ports exist on both sides and on the bottom edge; each wire uses the
+ * pair that faces the other node (bottom -> top for a report placed below
+ * its manager), so wires never run underneath a tile.
  */
 export function OrchestratorOutPort() {
   return (
@@ -141,38 +145,51 @@ export function OrchestratorOutPort() {
           title="Drag to an agent or a source to wire it to this orchestrator"
         />
       ))}
+      <Handle
+        type="source"
+        id={`${ORCHESTRATOR_OUT_HANDLE}-bottom`}
+        position={Position.Bottom}
+        className="nodrag nopan"
+        style={{
+          ...portStyle(ORCHESTRATOR_COLOR, "left"),
+          top: "auto",
+          bottom: -7,
+          left: EDGE_PORT_LEFT,
+        }}
+        title="Drag to an agent or a source to wire it to this orchestrator"
+      />
     </>
   );
 }
 
 /**
- * Input ports of a worker agent tile or a source node. An orchestrator
- * already uses its side ports for outgoing wires, so the wire from its own
- * manager lands on a port on its top edge.
+ * Input ports of an agent tile or a source node. An orchestrator already
+ * uses its side ports for outgoing wires, so the wire from its own manager
+ * lands on its top-edge port only.
  */
 export function OrchestrationInPort({
   color,
   onTop = false,
 }: {
   color: string;
+  /** Only the top-edge port (for orchestrators). */
   onTop?: boolean;
 }) {
-  if (onTop) {
-    return (
-      <Handle
-        type="target"
-        id={`${ORCHESTRATION_IN_HANDLE}-top`}
-        position={Position.Top}
-        className="nodrag nopan"
-        style={{
-          ...portStyle(color, "left"),
-          top: -7,
-          left: 44,
-        }}
-        title="Wire a manager orchestrator here to make this one report to it"
-      />
-    );
-  }
+  const top = (
+    <Handle
+      type="target"
+      id={`${ORCHESTRATION_IN_HANDLE}-top`}
+      position={Position.Top}
+      className="nodrag nopan"
+      style={{
+        ...portStyle(color, "left"),
+        top: -7,
+        left: EDGE_PORT_LEFT,
+      }}
+      title={onTop ? "Wire a manager orchestrator here to make this one report to it" : undefined}
+    />
+  );
+  if (onTop) return top;
   return (
     <>
       {(["left", "right"] as const).map((side) => (
@@ -185,6 +202,7 @@ export function OrchestrationInPort({
           style={portStyle(color, side)}
         />
       ))}
+      {top}
     </>
   );
 }
@@ -201,6 +219,7 @@ export interface NodeRect {
   x: number;
   y: number;
   w: number;
+  h: number;
 }
 
 function facingSides(from: NodeRect, to: NodeRect): [PortSide, PortSide] {
@@ -486,15 +505,20 @@ export function buildOrchestrationEdges(options: {
       busy = options.busyTerminalIds.has(link.targetId);
     } else {
       const source = options.sources[link.targetId];
-      if (source) targetRect = { x: source.x, y: source.y, w: source.w };
+      if (source) targetRect = { x: source.x, y: source.y, w: source.w, h: source.h };
       color = source
         ? (SOURCE_KIND_META[source.kind] ?? SOURCE_KIND_META.note).color
         : ORCHESTRATOR_COLOR;
     }
     if (!targetRect) continue;
-    const [outSide, inSide] = facingSides(orchestratorRect, targetRect);
     const targetIsManager =
       link.targetKind === "terminal" && orchestrators.has(link.targetId);
+    // A target fully below the manager is wired bottom -> top, like an org
+    // chart; anything beside it uses the facing side ports.
+    const below = targetRect.y >= orchestratorRect.y + orchestratorRect.h;
+    const [outSide, inSide] = below
+      ? (["bottom", "top"] as const)
+      : facingSides(orchestratorRect, targetRect);
     edges.push({
       id: link.id,
       type: "orchestration",

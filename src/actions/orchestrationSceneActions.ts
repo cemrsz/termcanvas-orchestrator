@@ -5,7 +5,12 @@ import {
 } from "../stores/orchestrationStore";
 import { resolveTerminalWithRuntimeState } from "../stores/terminalRuntimeStateStore";
 import { useNotificationStore } from "../stores/notificationStore";
-import { createTerminalInScene } from "./terminalSceneActions";
+import {
+  createTerminalInScene,
+  focusTerminalInScene,
+} from "./terminalSceneActions";
+import { FULL_TEAM, planTeam, type TeamTemplate } from "./teamTemplate";
+import { panToTerminal } from "../utils/panToTerminal";
 import type { ProjectData, TerminalData } from "../types";
 import type {
   OrchestrationSourceKind,
@@ -100,6 +105,93 @@ export async function createOrchestratorInScene(options: {
   useOrchestrationStore.getState().markOrchestrator(terminal.id);
   connectProjectAgents(terminal.id, project.id);
   return terminal;
+}
+
+/**
+ * Lay out and wire a whole team of Claude terminals: a lead, managers that
+ * report to it and workers that report to each manager. Each agent starts
+ * with its model, its role name and its team brief; the lead is briefed
+ * and waits for the user's first command.
+ */
+export async function createTeamInScene(options: {
+  projectId: string;
+  worktreeId: string;
+  position: { x: number; y: number };
+  template?: TeamTemplate;
+}): Promise<TerminalData[] | null> {
+  const project = useProjectStore
+    .getState()
+    .projects.find((candidate) => candidate.id === options.projectId);
+  const worktree = project?.worktrees.find(
+    (candidate) => candidate.id === options.worktreeId,
+  );
+  if (!project || !worktree) return null;
+
+  const plan = planTeam(options.template ?? FULL_TEAM, options.position);
+  const terminals = new Map<string, TerminalData>();
+  for (const agent of plan) {
+    terminals.set(agent.key, {
+      ...createTerminal("claude"),
+      customTitle: agent.name,
+      model: agent.model,
+      width: agent.width,
+      height: agent.height,
+    });
+  }
+  const lead = terminals.get("lead")!;
+
+  let startPrompt: string;
+  try {
+    ({ startPrompt } = await window.termcanvas.orchestrator.prepare(
+      lead.id,
+      worktree.path,
+    ));
+  } catch (error) {
+    notifyError(
+      `Could not prepare the team: ${error instanceof Error ? error.message : String(error)}`,
+    );
+    return null;
+  }
+
+  // Wire everything before the terminals exist, so each one launches
+  // already knowing it is on a team (system prompt, allowed tools).
+  const store = useOrchestrationStore.getState();
+  for (const agent of plan) {
+    if (agent.tier !== "worker") store.markOrchestrator(terminals.get(agent.key)!.id);
+  }
+  for (const agent of plan) {
+    const id = terminals.get(agent.key)!.id;
+    if (agent.managerKey) {
+      store.connect(terminals.get(agent.managerKey)!.id, "terminal", id);
+    }
+    store.setRole(id, agent.role);
+  }
+
+  const created: TerminalData[] = [];
+  for (const agent of plan) {
+    const terminal = terminals.get(agent.key)!;
+    created.push(
+      createTerminalInScene({
+        projectId: project.id,
+        worktreeId: worktree.id,
+        terminal: {
+          ...terminal,
+          ...(agent.key === "lead" ? { initialPrompt: startPrompt } : {}),
+        },
+        position: { x: agent.x, y: agent.y },
+      }),
+    );
+  }
+
+  focusTerminalInScene(lead.id);
+  panToTerminal(lead.id);
+  useNotificationStore
+    .getState()
+    .notify(
+      "info",
+      `Team ready: ${plan.length} agents. Give your command to ${getTerminalDisplayName({ ...lead, customTitle: lead.customTitle })}.`,
+    );
+  return created;
 }
 
 /**
