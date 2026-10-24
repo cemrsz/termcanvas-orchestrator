@@ -86,6 +86,20 @@ function hostOf(url: string): string {
   }
 }
 
+/** One line describing an event payload for the activity feed. */
+export function summarizePayload(payload: unknown): string {
+  if (payload === null || payload === undefined) return "(empty)";
+  if (typeof payload !== "object") return clip(String(payload), 80);
+  if (Array.isArray(payload)) return `${payload.length} item(s)`;
+  const record = payload as Record<string, unknown>;
+  for (const key of ["summary", "message", "event", "type", "status", "title"]) {
+    const value = record[key];
+    if (typeof value === "string" && value.trim()) return clip(value, 80);
+  }
+  const keys = Object.keys(record);
+  return clip(keys.slice(0, 5).join(", ") || "{}", 80);
+}
+
 /** Header the bridge puts in front of everything it pastes into an agent. */
 export const TEAM_MESSAGE_PREFIX = "[TermCanvas · ";
 
@@ -106,12 +120,19 @@ export function classifyPrompt(prompt: string): {
   const rest = trimmed.slice(headerEnd + 1);
   const blank = rest.search(/\r?\n\s*\r?\n/);
   const body = blank >= 0 ? rest.slice(blank).trim() : rest.trim();
+  if (header.startsWith("n8n") || header.startsWith("event")) {
+    const source = /source "([^"]+)"/.exec(header)?.[1];
+    let summary: string;
+    try {
+      summary = summarizePayload(JSON.parse(body));
+    } catch {
+      summary = firstLine(body);
+    }
+    return { origin: "event", body: summary, ...(source ? { from: source } : {}) };
+  }
   const from = /from (.+?)(?: to | \(|$)/.exec(header)?.[1]?.trim();
   if (header.startsWith("task")) return { origin: "task", body, from };
   if (header.startsWith("message")) return { origin: "msg", body, from };
-  if (header.startsWith("n8n") || header.startsWith("event")) {
-    return { origin: "event", body, from };
-  }
   return { origin: "user", body: prompt };
 }
 
@@ -324,7 +345,10 @@ export function formatActivity(
           : `Message from ${entry.targetName ?? "the team"}: ${text}`;
       }
       if (entry.action === "event") {
-        return tr ? `Otomatik olay geldi: ${text}` : `Automatic event: ${text}`;
+        const from = entry.targetName ? ` (${entry.targetName})` : "";
+        return tr
+          ? `Otomatik olay geldi${from}: ${text}`
+          : `Automatic event${from}: ${text}`;
       }
       return tr ? `Yeni komut: ${text}` : `New command: ${text}`;
     }

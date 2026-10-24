@@ -302,6 +302,13 @@ const teamHub = new TeamHub({
   dataDir: TEAM_DIR,
   getTurnState: (terminalId) =>
     telemetryService.getTerminalSnapshot(terminalId)?.turn_state ?? null,
+  getLastActivityAt: (terminalId) => {
+    const snapshot = telemetryService.getTerminalSnapshot(terminalId);
+    const stamps = [snapshot?.last_output_at, snapshot?.last_session_event_at]
+      .map((value) => (value ? Date.parse(value) : NaN))
+      .filter((value) => Number.isFinite(value));
+    return stamps.length > 0 ? Math.max(...stamps) : null;
+  },
   isPtyAlive: (ptyId) => !!ptyManager.getPid(ptyId),
   deliver: (member, text) => submitTextToAgent(ptyManager, member, text),
   writeWorkspace: (member, role) => {
@@ -1926,6 +1933,9 @@ function setupIpc() {
               link.targetKind === "terminal" && link.targetId === terminalId,
           ),
       });
+      // The renderer may ask before its team directory reached us; the
+      // directory has the final say on this agent's place in the team.
+      teamHub.refreshWorkspace(terminalId);
       return {
         instructionsRelPath: workspace.instructionsRelPath,
         scriptRelPath: workspace.scriptRelPath,

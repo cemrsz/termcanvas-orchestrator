@@ -31,6 +31,7 @@ ekler; aşağıdaki liste commit sırasıyla aynıdır.
 19. [n8n çıktıları](19-n8n-ciktilari.md) — sabit portlu gelen kutusu, iş akışı çıktısı otomatik olarak agent'a
 20. [Sheet yazma](20-sheet-yazma.md) — Apps Script köprüsüyle agent'lar satır ekler ve günceller
 21. [Hazır ekip](21-hazir-ekip.md) — sağ tık → 1 Opus · 4 Sonnet · 20 Haiku, org şeması yerleşimi
+22. [Ekip paneli](22-ekip-paneli.md) — solda canlı "şunu yapıyorum" akışı, kadro ve rapor okuyucu
 
 ## Nasıl kullanılır
 

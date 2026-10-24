@@ -27,6 +27,7 @@ import {
   describeHookEvent,
   firstLine,
   formatActivity,
+  summarizePayload,
   type TeamActivityDraft,
   type TeamActivityEntry,
 } from "../shared/teamActivity";
@@ -35,6 +36,8 @@ export interface TeamHubDeps {
   dataDir: string;
   /** Telemetry turn state of a terminal (turn_complete, tool_running, …). */
   getTurnState: (terminalId: string) => string | null;
+  /** Epoch ms of the terminal's last output or session activity. */
+  getLastActivityAt?: (terminalId: string) => number | null;
   isPtyAlive: (ptyId: number) => boolean;
   /** Type a prompt into the agent's terminal and submit it. */
   deliver: (member: TeamMemberInfo, text: string) => Promise<void>;
@@ -93,6 +96,15 @@ const BUSY_STATES = new Set([
 ]);
 /** After typing a prompt, give the CLI time to report its new turn. */
 const DELIVERY_SETTLE_MS = 8000;
+/**
+ * A turn that claims to be thinking but has been silent this long is a
+ * stale telemetry state (e.g. a resumed session); tools and approval
+ * prompts are never treated as stale.
+ */
+const STALE_TURN_MS = 3 * 60_000;
+const STALE_TURN_STATES = new Set(["thinking", "in_turn"]);
+/** Hook events can beat the first directory sync of a new terminal. */
+const EARLY_HOOK_MS = 15_000;
 const MAX_BATCH = 6;
 
 let idCounter = 0;
@@ -160,6 +172,7 @@ export class TeamHub {
   private settlingUntil = new Map<string, number>();
   private delivering = new Set<string>();
   private preparedRoles = new Map<string, string>();
+  private earlyHooks: { event: TeamHookEvent; at: number }[] = [];
   private readonly activityFile: string;
   private readonly boardFile: string;
   private readonly reportsFile: string;
@@ -201,6 +214,14 @@ export class TeamHub {
 
   setDirectory(directory: TeamDirectory) {
     this.directory = directory;
+    if (this.earlyHooks.length > 0) {
+      const early = this.earlyHooks;
+      this.earlyHooks = [];
+      const cutoff = this.now() - EARLY_HOOK_MS;
+      for (const { event, at } of early) {
+        if (at >= cutoff) this.recordHookEvent(event, at);
+      }
+    }
     // Every team member gets its bridge files; rewrite them when its place
     // in the hierarchy changes (AGENT.md differs for managers and the lead).
     for (const member of directory.members) {
@@ -221,6 +242,15 @@ export class TeamHub {
         console.warn(`[TeamHub] could not write workspace for ${member.id}:`, err);
       }
     }
+  }
+
+  /**
+   * Rewrite one member's bridge files from the directory, e.g. after
+   * something else wrote them without knowing its place in the team.
+   */
+  refreshWorkspace(terminalId: string) {
+    this.preparedRoles.delete(terminalId);
+    this.setDirectory(this.directory);
   }
 
   getMember(terminalId: string): TeamMemberInfo | undefined {
@@ -250,6 +280,15 @@ export class TeamHub {
       const entry = this.activity[i];
       if (entry.agentId !== terminalId) continue;
       return formatActivity(entry, this.directory.lang);
+    }
+    return null;
+  }
+
+  /** When the member last finished a turn, per its Stop hook. */
+  lastDoneAt(terminalId: string): number | null {
+    for (let i = this.activity.length - 1; i >= 0; i--) {
+      const entry = this.activity[i];
+      if (entry.agentId === terminalId && entry.kind === "done") return entry.at;
     }
     return null;
   }
@@ -291,11 +330,16 @@ export class TeamHub {
   }
 
   /** Turn Claude/Codex hook events into feed lines for agents on the canvas. */
-  recordHookEvent(event: TeamHookEvent) {
+  recordHookEvent(event: TeamHookEvent, at = this.now()) {
     const terminalId = event.terminal_id;
     if (!terminalId) return;
     const member = this.getMember(terminalId);
-    if (!member) return;
+    if (!member) {
+      // Possibly a terminal created a moment ago; replay once it is known.
+      this.earlyHooks.push({ event, at });
+      if (this.earlyHooks.length > 200) this.earlyHooks.shift();
+      return;
+    }
     if (event.hook_event_name === "Stop") {
       let reply: string | null = null;
       const transcript = event.transcript_path;
@@ -311,6 +355,7 @@ export class TeamHub {
         agentName: member.name,
         kind: "done",
         text: reply ? firstLine(reply, 140) : "",
+        at,
       });
       this.settlingUntil.delete(member.id);
       void this.tick();
@@ -320,11 +365,11 @@ export class TeamHub {
     if (!draft) return;
     if (draft.kind === "tool") {
       const last = this.lastEntryOf(member.id);
-      if (last?.kind === "tool" && this.now() - last.at < TOOL_THROTTLE_MS) {
+      if (last?.kind === "tool" && at - last.at < TOOL_THROTTLE_MS) {
         return;
       }
     }
-    this.record(draft);
+    this.record({ ...draft, at });
   }
 
   private lastEntryOf(terminalId: string): TeamActivityEntry | undefined {
@@ -448,7 +493,12 @@ export class TeamHub {
     }
     if ((this.settlingUntil.get(member.id) ?? 0) > this.now()) return false;
     const state = this.deps.getTurnState(member.id);
-    return !state || !BUSY_STATES.has(state);
+    if (!state || !BUSY_STATES.has(state)) return true;
+    if (STALE_TURN_STATES.has(state) && this.deps.getLastActivityAt) {
+      const last = this.deps.getLastActivityAt(member.id);
+      if (last !== null && this.now() - last > STALE_TURN_MS) return true;
+    }
+    return false;
   }
 
   /** Deliver queued items to every agent that is idle right now. */
@@ -587,18 +637,4 @@ export class TeamHub {
       deliveredTo: recipients.map((member) => member.name),
     };
   }
-}
-
-/** One line describing an event payload for the activity feed. */
-export function summarizePayload(payload: unknown): string {
-  if (payload === null || payload === undefined) return "(empty)";
-  if (typeof payload !== "object") return clip(String(payload), 80);
-  if (Array.isArray(payload)) return `${payload.length} item(s)`;
-  const record = payload as Record<string, unknown>;
-  for (const key of ["summary", "message", "event", "type", "status", "title"]) {
-    const value = record[key];
-    if (typeof value === "string" && value.trim()) return clip(value, 80);
-  }
-  const keys = Object.keys(record);
-  return clip(keys.slice(0, 5).join(", ") || "{}", 80);
 }

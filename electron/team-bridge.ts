@@ -406,6 +406,7 @@ async function cmdWait(rest, flags) {
     const started =
       !sentAt ||
       startedAt >= sentAt - 2000 ||
+      (a.lastDoneAt && a.lastDoneAt >= sentAt) ||
       ACTIVE_STATES.has(state) ||
       Date.now() - sentAt > START_GRACE_MS;
     if (started && DONE_STATES.has(state) && !a.queued) {

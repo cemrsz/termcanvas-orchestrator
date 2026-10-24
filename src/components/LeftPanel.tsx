@@ -18,14 +18,17 @@ import { buildProjectTree, type CanvasTerminalItem } from "./sessionPanelModel";
 import { ProjectTree } from "./ProjectTree";
 import { TerminalCard, HistorySection, StashedSection } from "./SessionsPanel";
 import { PinDrawer } from "./PinDrawer";
+import { TeamPanel } from "./TeamPanel";
 
 /*
  * Left panel — project management + session history.
  *
- * Two tabbed surfaces:
+ * Three tabbed surfaces:
  *   1. Sessions: live projects / worktrees / terminals. Click a
  *      terminal row to pan the canvas to it.
- *   2. History: past Claude/Codex sessions. Click a row to open
+ *   2. Team: what each agent on the team is doing, as a live feed,
+ *      plus the reports the team lead saves.
+ *   3. History: past Claude/Codex sessions. Click a row to open
  *      the replay drawer.
  */
 
@@ -66,12 +69,31 @@ function IconHistory({ size = 14 }: { size?: number }) {
   );
 }
 
+function IconTeam({ size = 14 }: { size?: number }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.3"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M3 4.5h6.5v4H6.5L4.5 10V8.5H3z" />
+      <path d="M9.5 6.5H13v4h-1.2v1.4l-1.8-1.4H7.5V8.5" />
+    </svg>
+  );
+}
+
 const LEFT_TAB_CONFIG: {
   id: LeftPanelTab;
   icon: typeof IconSessions;
-  labelKey: "left_panel_sessions" | "left_panel_history";
+  labelKey: "left_panel_sessions" | "left_panel_history" | "left_panel_team";
 }[] = [
   { id: "sessions", icon: IconSessions, labelKey: "left_panel_sessions" },
+  { id: "team", icon: IconTeam, labelKey: "left_panel_team" },
   { id: "history", icon: IconHistory, labelKey: "left_panel_history" },
 ];
 
@@ -414,6 +436,11 @@ export function LeftPanel() {
               </div>
             </div>
 
+            {activeTab === "team" ? (
+              <div className="flex-1 min-h-0">
+                <TeamPanel />
+              </div>
+            ) : (
             <div className="tc-sidebar-tree-font flex-1 min-h-0 overflow-y-auto">
               {activeTab === "sessions" ? (
                 <>
@@ -437,6 +464,7 @@ export function LeftPanel() {
                 />
               )}
             </div>
+            )}
 
             <div
               className="absolute top-0 right-0 w-1.5 h-full cursor-ew-resize group/resize"

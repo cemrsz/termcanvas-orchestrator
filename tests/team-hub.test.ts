@@ -4,13 +4,14 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-import { TeamHub, summarizePayload } from "../electron/team-hub.ts";
+import { TeamHub } from "../electron/team-hub.ts";
 import type { TeamDirectory, TeamMemberInfo } from "../shared/team.ts";
 import {
   classifyPrompt,
   describeHookEvent,
   formatActivity,
   parseSince,
+  summarizePayload,
 } from "../shared/teamActivity.ts";
 
 function member(id: string, name: string, worktreePath: string): TeamMemberInfo {
@@ -168,6 +169,10 @@ test("prompts from the bridge are classified by their header", () => {
   );
   assert.deepEqual(task, { origin: "task", body: "Find 10 leads in Berlin", from: "Lead" });
   assert.equal(classifyPrompt("just do it").origin, "user");
+  assert.deepEqual(
+    classifyPrompt('[TermCanvas · n8n event from source "New Leads" at 2026-10-24T02:09:05Z]\nSource notes: x\nThis is…\n\n{\n  "summary": "2 new leads"\n}'),
+    { origin: "event", body: "2 new leads", from: "New Leads" },
+  );
   const draft = describeHookEvent(
     { hook_event_name: "UserPromptSubmit", prompt: "[TermCanvas · message from Data 2 (scores)]\nAnswer…\n\nDone?" },
     { id: "w1", name: "Research 1" },
@@ -182,4 +187,48 @@ test("payload summaries and since parsing", () => {
   assert.equal(summarizePayload(null), "(empty)");
   assert.equal(parseSince("90m", 10_000_000), 10_000_000 - 90 * 60_000);
   assert.equal(parseSince("nonsense"), null);
+});
+
+test("hook events that beat the directory sync are replayed", () => {
+  const { hub } = setup();
+  hub.recordHookEvent({ hook_event_name: "UserPromptSubmit", terminal_id: "new-1", prompt: "hello there" });
+  assert.equal(hub.listActivity().length, 0);
+  const directory = hub.getDirectory();
+  hub.setDirectory({
+    ...directory,
+    members: [...directory.members, member("new-1", "Newcomer", "/tmp")],
+  });
+  const entries = hub.listActivity();
+  assert.equal(entries.length, 1);
+  assert.equal(formatActivity(entries[0], "en"), "New command: hello there");
+});
+
+test("a silent 'thinking' state does not block deliveries forever", async () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "tc-team-"));
+  let now = 10_000_000;
+  const delivered: string[] = [];
+  const hub = new TeamHub({
+    dataDir,
+    getTurnState: () => "in_turn",
+    getLastActivityAt: () => 10_000_000,
+    isPtyAlive: () => true,
+    deliver: async (m) => {
+      delivered.push(m.id);
+    },
+    writeWorkspace: () => {},
+    now: () => now,
+  });
+  hub.setDirectory({
+    managerIds: ["a"],
+    members: [member("a", "A", "/r"), member("b", "B", "/r")],
+    sources: [],
+    links: [{ orchestratorId: "a", targetKind: "terminal", targetId: "b" }],
+    lang: "en",
+  });
+  hub.sendMessage("a", "b", "ping");
+  await hub.tick();
+  assert.deepEqual(delivered, []);
+  now += 4 * 60_000;
+  await hub.tick();
+  assert.deepEqual(delivered, ["b"]);
 });

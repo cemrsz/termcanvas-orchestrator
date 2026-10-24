@@ -101,6 +101,7 @@ export class TeamApi {
       turnStartedAt: snapshot?.turn_started_at ?? null,
       lastOutputAt: snapshot?.last_output_at ?? null,
       doing: hub.latestDoing(member.id),
+      lastDoneAt: hub.lastDoneAt(member.id),
       queued: hub.queuedFor(member.id),
     };
   }
