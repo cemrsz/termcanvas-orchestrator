@@ -144,6 +144,12 @@ function useWorktreeWatcher() {
   }, [projectCount]);
 }
 
+/**
+ * Set once the saved workspace has been read (or there was none). Until
+ * then the live scene is still empty and must never be written over it.
+ */
+let savedStateSettled = false;
+
 function useStatePersistence() {
   useEffect(() => {
     if (!window.termcanvas) return;
@@ -151,12 +157,18 @@ function useStatePersistence() {
       .load()
       .then((saved) => {
         const restored = readWorkspaceSnapshot(saved);
-        if (!restored) return;
+        if (!restored) {
+          // Nothing usable on disk: only a missing file is safe to replace.
+          savedStateSettled = saved === null || saved === undefined;
+          return;
+        }
         if (isSkipRestoreSnapshot(restored)) {
+          savedStateSettled = true;
           window.termcanvas.state.save({ skipRestore: false });
           return;
         }
         restoreWorkspaceSnapshot(restored);
+        savedStateSettled = true;
         useWorkspaceStore.getState().setWorkspacePath(null);
         useWorkspaceStore.getState().markClean();
       })
@@ -208,6 +220,23 @@ function useAutoSave() {
       }
     });
 
+    // Closing the window used to keep whatever the last debounced save
+    // wrote, often minutes old: session ids picked up since then were lost
+    // and agents came back as fresh conversations.
+    const saveOnUnload = () => {
+      if (!savedStateSettled) return;
+      if (debounceTimer) {
+        clearTimeout(debounceTimer);
+        debounceTimer = null;
+      }
+      try {
+        window.termcanvas.state.saveSync(snapshotState());
+      } catch (err) {
+        console.error("[useAutoSave] unload save failed:", err);
+      }
+    };
+    window.addEventListener("beforeunload", saveOnUnload);
+
     const backstopTimer = setInterval(() => {
       const { dirty, lastDirtyAt, lastSavedAt } = useWorkspaceStore.getState();
       if (shouldRunAutoSaveBackstop({ dirty, lastDirtyAt, lastSavedAt })) {
@@ -217,6 +246,7 @@ function useAutoSave() {
 
     return () => {
       unsubscribe();
+      window.removeEventListener("beforeunload", saveOnUnload);
       if (debounceTimer) {
         clearTimeout(debounceTimer);
       }

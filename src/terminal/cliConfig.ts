@@ -15,6 +15,20 @@ interface TerminalLaunchConfig {
   newArgs: () => string[];
   autoApproveArgs?: () => string[];
   promptArgs?: (prompt: string) => string[];
+  modelArgs?: (model: string) => string[];
+  /** Start a new conversation under a caller-chosen id. */
+  assignSessionIdArgs?: (id: string) => string[];
+  appendSystemPromptArgs?: (prompt: string) => string[];
+  allowedToolsArgs?: (tools: string[]) => string[];
+}
+
+/** Launch extras that depend on the terminal, not only on its type. */
+export interface TerminalLaunchExtras {
+  model?: string;
+  /** Used instead of a resume id when the conversation does not exist yet. */
+  assignedSessionId?: string;
+  appendSystemPrompt?: string;
+  allowedTools?: string[];
 }
 
 export interface ComposerAdapterConfig {
@@ -87,6 +101,10 @@ export const TERMINAL_CONFIG: Record<TerminalType, TerminalAdapterConfig> = {
       // Claude's variadic options, such as --mcp-config, otherwise consume
       // following positional prompts as additional option values.
       promptArgs: (prompt) => ["--", prompt],
+      modelArgs: (model) => ["--model", model],
+      assignSessionIdArgs: (id) => ["--session-id", id],
+      appendSystemPromptArgs: (prompt) => ["--append-system-prompt", prompt],
+      allowedToolsArgs: (tools) => ["--allowedTools", tools.join(",")],
     },
     composer: {
       supportsComposer: true,
@@ -106,6 +124,7 @@ export const TERMINAL_CONFIG: Record<TerminalType, TerminalAdapterConfig> = {
       resumeArgs: (id) => ["resume", id],
       newArgs: () => [],
       autoApproveArgs: () => ["--dangerously-bypass-approvals-and-sandbox"],
+      modelArgs: (model) => ["-m", model],
     },
     composer: {
       supportsComposer: true,
@@ -235,22 +254,49 @@ export function getTerminalLaunchOptions(
   sessionId: string | undefined,
   autoApprove?: boolean,
   cliOverride?: CliCommandConfig,
+  extras: TerminalLaunchExtras = {},
 ): { shell: string; args: string[] } | null {
   const config = TERMINAL_CONFIG[type].launch;
   if (!config) return null;
 
   const shell = cliOverride?.command || config.shell;
   const extraArgs = cliOverride?.args ?? [];
-  const base = sessionId ? config.resumeArgs(sessionId) : config.newArgs();
+  const base = sessionId
+    ? config.resumeArgs(sessionId)
+    : extras.assignedSessionId && config.assignSessionIdArgs
+      ? config.assignSessionIdArgs(extras.assignedSessionId)
+      : config.newArgs();
   const extra =
     autoApprove && config.autoApproveArgs
       ? config.autoApproveArgs()
       : [];
+  const model =
+    extras.model && config.modelArgs ? config.modelArgs(extras.model) : [];
+  const systemPrompt =
+    extras.appendSystemPrompt && config.appendSystemPromptArgs
+      ? config.appendSystemPromptArgs(extras.appendSystemPrompt)
+      : [];
+  const allowedTools =
+    extras.allowedTools?.length && config.allowedToolsArgs
+      ? config.allowedToolsArgs(extras.allowedTools)
+      : [];
 
   return {
     shell,
-    args: [...extraArgs, ...extra, ...base],
+    args: [
+      ...extraArgs,
+      ...extra,
+      ...model,
+      ...systemPrompt,
+      ...allowedTools,
+      ...base,
+    ],
   };
+}
+
+/** True when this terminal type can start a conversation under a given id. */
+export function supportsAssignedSessionId(type: TerminalType): boolean {
+  return !!TERMINAL_CONFIG[type].launch?.assignSessionIdArgs;
 }
 
 export function getTerminalPromptArgs(

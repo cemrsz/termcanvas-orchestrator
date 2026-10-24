@@ -87,6 +87,12 @@ contextBridge.exposeInMainWorld("termcanvas", {
         sessionId,
         cwd,
       ) as Promise<boolean>,
+    claudeTranscriptExists: (sessionId: string, cwd: string) =>
+      ipcRenderer.invoke(
+        "session:claude-transcript-exists",
+        sessionId,
+        cwd,
+      ) as Promise<boolean>,
     getClaudeByPid: (pid: number) =>
       ipcRenderer.invoke("session:get-claude-by-pid", pid) as Promise<
         string | null
@@ -547,6 +553,9 @@ contextBridge.exposeInMainWorld("termcanvas", {
   state: {
     load: () => ipcRenderer.invoke("state:load"),
     save: (state: unknown) => ipcRenderer.invoke("state:save", state),
+    // Blocking save for the unload path, where an async invoke is dropped.
+    saveSync: (state: unknown) =>
+      ipcRenderer.sendSync("state:save-sync", state) as boolean,
   },
   snapshots: {
     list: () => ipcRenderer.invoke("snapshots:list"),

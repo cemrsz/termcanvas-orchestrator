@@ -56,6 +56,19 @@ export function BrowserCard({ card }: Props) {
   // gesture after the first step.
   const [gesture, setGesture] = useState<"move" | "resize" | null>(null);
 
+  // A release outside the window never sends mouseup; the shield would then
+  // stay up and swallow every click and keystroke in the app.
+  useEffect(() => {
+    if (!gesture) return;
+    const end = () => {
+      dragRef.current = null;
+      resizeRef.current = null;
+      setGesture(null);
+    };
+    window.addEventListener("blur", end);
+    return () => window.removeEventListener("blur", end);
+  }, [gesture]);
+
   const cardId = `browser:${card.id}`;
   const isSelected = useSelectionStore((state) =>
     state.selectedItems.some(
@@ -291,6 +304,7 @@ export function BrowserCard({ card }: Props) {
           <div
             className="fixed inset-0 z-[200]"
             style={{ cursor: gesture === "move" ? "grabbing" : "se-resize" }}
+            onMouseUp={() => setGesture(null)}
           />,
           document.body,
         )}

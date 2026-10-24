@@ -44,7 +44,13 @@ import { useQuotaStore } from "../stores/quotaStore";
 import { useCodexQuotaStore } from "../stores/codexQuotaStore";
 import { useThemeStore, XTERM_THEMES } from "../stores/themeStore";
 import type { TerminalData, TerminalStatus, TerminalType } from "../types";
-import { getTerminalLaunchOptions, getTerminalPromptArgs } from "./cliConfig";
+import {
+  getTerminalLaunchOptions,
+  getTerminalPromptArgs,
+  supportsAssignedSessionId,
+} from "./cliConfig";
+import { getTerminalLaunchExtras } from "./teamLaunch";
+import { useWorkspaceStore } from "../stores/workspaceStore";
 import { buildFontFamily } from "./fontRegistry";
 import { useLocaleStore } from "../stores/localeStore";
 import { isRegisteredAppShortcutEvent } from "../stores/shortcutStore";
@@ -484,6 +490,11 @@ function setSessionId(
   useTerminalRuntimeStateStore
     .getState()
     .setSessionId(runtime.meta.terminal.id, sessionId);
+  // The session id is what reopening the app resumes, so a change must
+  // reach state.json on its own, not wait for some unrelated edit.
+  if (prev !== sessionId) {
+    useWorkspaceStore.getState().markDirty();
+  }
 
   // A new session makes a summary title stale, but an orchestrated agent's
   // title is its role name and must survive restarts.
@@ -1550,16 +1561,64 @@ function buildTerminalRuntime(
   return runtime;
 }
 
+function newSessionUuid(): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  const hex = Array.from({ length: 32 }, () =>
+    Math.floor(Math.random() * 16).toString(16),
+  ).join("");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-4${hex.slice(13, 16)}-a${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
+}
+
+/**
+ * Claude terminals always know their session id up front: a new
+ * conversation is started with `--session-id <uuid>` and that id is saved
+ * right away, so reopening the app resumes the same conversation. A saved
+ * id whose conversation never got its first message cannot be resumed, so
+ * it is started again under the same id instead.
+ */
+async function resolveSessionLaunch(
+  runtime: ManagedTerminalRuntime,
+  requestedSessionId: string | undefined,
+): Promise<{ resumeSessionId?: string; assignedSessionId?: string }> {
+  if (!supportsAssignedSessionId(runtime.meta.terminal.type)) {
+    return { resumeSessionId: requestedSessionId };
+  }
+  if (!requestedSessionId) {
+    return { assignedSessionId: newSessionUuid() };
+  }
+  const exists = await window.termcanvas.session
+    .claudeTranscriptExists(requestedSessionId, runtime.meta.worktreePath)
+    .catch(() => true);
+  return exists
+    ? { resumeSessionId: requestedSessionId }
+    : { assignedSessionId: requestedSessionId };
+}
+
 async function spawnPty(
   runtime: ManagedTerminalRuntime,
-  resumeSessionId?: string,
+  requestedSessionId?: string,
 ) {
+  const { resumeSessionId, assignedSessionId } = await resolveSessionLaunch(
+    runtime,
+    requestedSessionId,
+  );
+  if (runtime.disposed) return;
   const launch = getTerminalLaunchOptions(
     runtime.meta.terminal.type,
     resumeSessionId,
     runtime.meta.terminal.autoApprove,
     runtime.cliOverride,
+    {
+      ...getTerminalLaunchExtras(runtime.meta.terminal),
+      assignedSessionId,
+    },
   );
+  runtime.wasResumeAttempt = !!resumeSessionId && !!launch;
+  if (launch && assignedSessionId) {
+    setSessionId(runtime, assignedSessionId);
+  }
   const options: {
     args?: string[];
     cwd: string;
@@ -1593,14 +1652,33 @@ async function spawnPty(
       runtime.meta.terminal.type === "codex" ||
       runtime.meta.terminal.type === "shell") &&
     !!window.termcanvas?.hooks;
+  // Claude keeps listening after its first session: /clear and /resume
+  // switch the conversation, and the new id must be the one we save.
+  const followsSessionSwitches = runtime.meta.terminal.type === "claude";
 
-  if (!resumeSessionId && launch && isHookEnabled) {
+  if ((!resumeSessionId || followsSessionSwitches) && launch && isHookEnabled) {
     runtime.removeHookSessionStarted?.();
     runtime.removeHookSessionStarted =
       window.termcanvas!.hooks.onSessionStarted((payload) => {
         if (payload.terminalId !== runtime.meta.terminal.id) return;
-        if (runtime.disposed || hookSessionReceived) return;
+        if (runtime.disposed) return;
+        const isSwitch =
+          followsSessionSwitches &&
+          payload.sessionId !== runtime.meta.terminal.sessionId;
+        if (hookSessionReceived && !isSwitch) return;
         hookSessionReceived = true;
+        if (
+          followsSessionSwitches &&
+          !isSwitch &&
+          runtime.watchedSessionId === payload.sessionId
+        ) {
+          // The id we launched with: already saved and watched.
+          if (runtime.hookFallbackTimer) {
+            clearTimeout(runtime.hookFallbackTimer);
+            runtime.hookFallbackTimer = null;
+          }
+          return;
+        }
 
         // Cancel polling fallback
         runtime.sessionCancel?.();
@@ -1647,7 +1725,15 @@ async function spawnPty(
       watchSession(runtime, runtime.meta.terminal.type, resumeSessionId);
     }
 
-    if (!resumeSessionId && launch) {
+    if (assignedSessionId && launch) {
+      // The id is known, so no discovery is needed.
+      watchSession(
+        runtime,
+        runtime.meta.terminal.type,
+        assignedSessionId,
+        "strong",
+      );
+    } else if (!resumeSessionId && launch) {
       if (
         isHookEnabled &&
         (runtime.meta.terminal.type === "claude" ||

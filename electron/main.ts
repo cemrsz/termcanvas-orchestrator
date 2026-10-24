@@ -24,6 +24,7 @@ import { GitFileWatcher } from "./git-watcher";
 import { FileTreeWatcher } from "./file-tree-watcher";
 import {
   SessionWatcher,
+  claudeTranscriptHasConversation,
   resolveSessionFile,
   type SessionType,
 } from "./session-watcher";
@@ -775,6 +776,14 @@ function setupIpc() {
     },
   );
 
+  ipcMain.handle(
+    "session:claude-transcript-exists",
+    (_event, sessionId: string, cwd: string) =>
+      claudeTranscriptHasConversation(
+        resolveSessionFile(sessionId, "claude", cwd),
+      ),
+  );
+
   ipcMain.handle("project:select-directory", async () => {
     const result = await dialog.showOpenDialog(mainWindow!, {
       properties: ["openDirectory"],
@@ -1455,6 +1464,16 @@ function setupIpc() {
 
   ipcMain.handle("state:save", (_event, state: unknown) => {
     statePersistence.save(state);
+  });
+
+  ipcMain.on("state:save-sync", (event, state: unknown) => {
+    try {
+      statePersistence.save(state);
+      event.returnValue = true;
+    } catch (err) {
+      console.error("[state:save-sync] failed:", err);
+      event.returnValue = false;
+    }
   });
 
   ipcMain.handle("snapshots:list", () => {

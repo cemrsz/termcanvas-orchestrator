@@ -317,6 +317,33 @@ export function toClaudeProjectKey(cwd: string): string {
   return cwd.replaceAll(/[^a-zA-Z0-9]/g, "-");
 }
 
+const TRANSCRIPT_SCAN_BYTES = 256 * 1024;
+
+/**
+ * `claude --resume <id>` only works once the session has a conversation;
+ * Claude writes the transcript lazily, at the first message. A session that
+ * was started but never used has to be started again under the same id.
+ */
+export function claudeTranscriptHasConversation(
+  filePath: string | null,
+): boolean {
+  if (!filePath) return false;
+  let fd: number | null = null;
+  try {
+    const stat = fs.statSync(filePath);
+    if (stat.size === 0) return false;
+    if (stat.size > TRANSCRIPT_SCAN_BYTES) return true;
+    fd = fs.openSync(filePath, "r");
+    const buffer = Buffer.alloc(stat.size);
+    fs.readSync(fd, buffer, 0, stat.size, 0);
+    return /"type"\s*:\s*"(user|assistant)"/.test(buffer.toString("utf-8"));
+  } catch {
+    return false;
+  } finally {
+    if (fd !== null) fs.closeSync(fd);
+  }
+}
+
 export function resolveSessionFile(
   sessionId: string,
   type: SessionType,

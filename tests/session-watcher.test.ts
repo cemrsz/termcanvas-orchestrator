@@ -7,6 +7,7 @@ import { DatabaseSync } from "node:sqlite";
 
 import {
   checkTurnComplete,
+  claudeTranscriptHasConversation,
   parseSessionTelemetryLine,
   resolveSessionFile,
   toClaudeProjectKey,
@@ -531,4 +532,20 @@ test("kimi telemetry parser tracks tool lifecycle and assistant completion", () 
   assert.equal(toolEnd[0]?.lifecycle, "end");
   assert.equal(toolEnd[0]?.call_id, "call-1");
   assert.equal(assistantReply[1]?.turn_state, "turn_complete");
+});
+
+test("claude transcript only counts once it holds a message", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "tc-transcript-"));
+  const file = path.join(dir, "s.jsonl");
+  assert.equal(claudeTranscriptHasConversation(null), false);
+  assert.equal(claudeTranscriptHasConversation(file), false);
+  fs.writeFileSync(file, "");
+  assert.equal(claudeTranscriptHasConversation(file), false);
+  fs.writeFileSync(file, JSON.stringify({ type: "summary", summary: "x" }) + "\n");
+  assert.equal(claudeTranscriptHasConversation(file), false);
+  fs.appendFileSync(
+    file,
+    JSON.stringify({ type: "user", message: { role: "user", content: "hi" } }) + "\n",
+  );
+  assert.equal(claudeTranscriptHasConversation(file), true);
 });

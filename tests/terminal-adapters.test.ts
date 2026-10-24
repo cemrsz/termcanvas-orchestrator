@@ -6,6 +6,7 @@ import {
   getTerminalLaunchOptions,
   getTerminalPromptArgs,
   isComposerSupportedTerminal,
+  supportsAssignedSessionId,
 } from "../src/terminal/cliConfig.ts";
 
 test("claude adapter uses bracketed paste with image-path fallback", () => {
@@ -112,4 +113,54 @@ test("getTerminalPromptArgs uses kimi's explicit prompt flag", () => {
     "--prompt",
     "Explore the repo",
   ]);
+});
+
+test("claude starts a new conversation under an assigned session id", () => {
+  const result = getTerminalLaunchOptions("claude", undefined, false, undefined, {
+    assignedSessionId: "11111111-2222-4333-8444-555555555555",
+  });
+  assert.ok(result);
+  assert.deepEqual(result.args, [
+    "--session-id",
+    "11111111-2222-4333-8444-555555555555",
+  ]);
+});
+
+test("a resume id wins over an assigned session id", () => {
+  const result = getTerminalLaunchOptions("claude", "s-1", false, undefined, {
+    assignedSessionId: "ignored",
+  });
+  assert.ok(result);
+  assert.deepEqual(result.args, ["--resume", "s-1"]);
+});
+
+test("claude launch carries model, team brief and allowed tools before the session args", () => {
+  const result = getTerminalLaunchOptions("claude", "s-1", true, undefined, {
+    model: "claude-haiku-5-5",
+    appendSystemPrompt: "brief",
+    allowedTools: ["Bash(node .termcanvas/*)", "Edit(.termcanvas/**)"],
+  });
+  assert.ok(result);
+  assert.deepEqual(result.args, [
+    "--dangerously-skip-permissions",
+    "--model",
+    "claude-haiku-5-5",
+    "--append-system-prompt",
+    "brief",
+    "--allowedTools",
+    "Bash(node .termcanvas/*),Edit(.termcanvas/**)",
+    "--resume",
+    "s-1",
+  ]);
+});
+
+test("only claude can be started under an assigned session id", () => {
+  assert.equal(supportsAssignedSessionId("claude"), true);
+  assert.equal(supportsAssignedSessionId("codex"), false);
+  assert.equal(supportsAssignedSessionId("shell"), false);
+  const codex = getTerminalLaunchOptions("codex", undefined, false, undefined, {
+    assignedSessionId: "x",
+    model: "gpt-5",
+  });
+  assert.deepEqual(codex?.args, ["-m", "gpt-5"]);
 });

@@ -409,6 +409,10 @@ function migrateProjects(projects: Record<string, unknown>[]): ProjectData[] {
                         ? terminal.initialPrompt
                         : undefined,
                     minimized: terminal.minimized === true,
+                    model:
+                      typeof terminal.model === "string"
+                        ? terminal.model
+                        : undefined,
                     origin,
                     parentTerminalId:
                       typeof terminal.parentTerminalId === "string"
@@ -551,6 +555,7 @@ function normalizeStashedTerminals(raw: unknown): StashedTerminal[] {
           initialPrompt:
             typeof t.initialPrompt === "string" ? t.initialPrompt : undefined,
           minimized: false,
+          model: typeof t.model === "string" ? t.model : undefined,
           origin,
           parentTerminalId:
             typeof t.parentTerminalId === "string"

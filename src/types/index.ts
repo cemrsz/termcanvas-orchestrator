@@ -137,6 +137,8 @@ export interface TerminalData {
   sessionId?: string;
   initialPrompt?: string;
   autoApprove?: boolean;
+  /** Model the agent CLI is launched with (e.g. claude-haiku-5-5). */
+  model?: string;
   stashed?: boolean;
   stashedAt?: number;
 }
@@ -559,6 +561,11 @@ export interface TermCanvasAPI {
       sessionId: string,
       cwd: string,
     ) => Promise<boolean>;
+    /** True once a Claude session has a conversation `--resume` can open. */
+    claudeTranscriptExists: (
+      sessionId: string,
+      cwd: string,
+    ) => Promise<boolean>;
     getClaudeByPid: (pid: number) => Promise<string | null>;
     findKimi: (
       cwd: string,
@@ -839,6 +846,7 @@ export interface TermCanvasAPI {
   state: {
     load: () => Promise<PersistedCanvasState | null>;
     save: (state: unknown) => Promise<void>;
+    saveSync: (state: unknown) => boolean;
   };
   snapshots: {
     list: () => Promise<
