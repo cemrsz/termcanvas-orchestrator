@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Background,
+  ConnectionMode,
   ReactFlow,
   ReactFlowProvider,
   useNodesState,
@@ -61,17 +62,20 @@ import {
 } from "./xyflowNodes";
 import {
   buildOrchestrationEdges,
-  isOrchestrationInHandle,
-  isOrchestratorOutHandle,
+  resolveWireIntent,
   buildSourceFlowNodes,
   orchestrationEdgeTypes,
   sourcesLayoutKey,
   type OrchestrationFlowEdge,
 } from "./orchestrationFlow";
-import { useOrchestrationStore } from "../stores/orchestrationStore";
+import {
+  isAgentTerminalType,
+  useOrchestrationStore,
+} from "../stores/orchestrationStore";
 import { useTerminalRuntimeStateStore } from "../stores/terminalRuntimeStateStore";
 import {
   addOrchestrationSourceInScene,
+  connectPipeInScene,
   createOrchestratorInScene,
   refreshOrchestratorWorkspaces,
 } from "../actions/orchestrationSceneActions";
@@ -499,20 +503,45 @@ function XyFlowCanvasInner() {
     });
   }, [links, orchestratorIds, projects, runtimeStates, sources]);
 
-  const isValidConnection = useCallback<IsValidConnection>((connection) => {
-    const state = useOrchestrationStore.getState();
-    if (!isOrchestratorOutHandle(connection.sourceHandle)) return false;
-    if (!isOrchestrationInHandle(connection.targetHandle)) return false;
-    if (!state.orchestratorIds.includes(connection.source)) return false;
-    if (connection.source === connection.target) return false;
-    return !state.orchestratorIds.includes(connection.target);
-  }, []);
+  const wireIntent = useCallback(
+    (connection: Parameters<typeof resolveWireIntent>[0]) => {
+      const state = useOrchestrationStore.getState();
+      return resolveWireIntent(connection, {
+        orchestratorIds: state.orchestratorIds,
+        sources: state.sources,
+        isAgent: (nodeId) => {
+          for (const project of useProjectStore.getState().projects) {
+            for (const worktree of project.worktrees) {
+              const terminal = worktree.terminals.find((t) => t.id === nodeId);
+              if (terminal) return isAgentTerminalType(terminal.type);
+            }
+          }
+          return false;
+        },
+      });
+    },
+    [],
+  );
 
-  const handleConnect = useCallback<OnConnect>((connection: Connection) => {
-    const state = useOrchestrationStore.getState();
-    const targetKind = state.sources[connection.target] ? "source" : "terminal";
-    state.connect(connection.source, targetKind, connection.target);
-  }, []);
+  const isValidConnection = useCallback<IsValidConnection>(
+    (connection) => wireIntent(connection) !== null,
+    [wireIntent],
+  );
+
+  const handleConnect = useCallback<OnConnect>(
+    (connection: Connection) => {
+      const intent = wireIntent(connection);
+      if (!intent) return;
+      if (intent.kind === "link") {
+        useOrchestrationStore
+          .getState()
+          .connect(intent.orchestratorId, intent.targetKind, intent.targetId);
+      } else {
+        connectPipeInScene(intent.a, intent.b);
+      }
+    },
+    [wireIntent],
+  );
 
   useEffect(() => {
     setNodes(projectedNodes);
@@ -860,7 +889,8 @@ function XyFlowCanvasInner() {
         edgeTypes={orchestrationEdgeTypes}
         onConnect={handleConnect}
         isValidConnection={isValidConnection}
-        connectionLineStyle={{ stroke: "var(--purple)", strokeWidth: 2 }}
+        connectionMode={ConnectionMode.Loose}
+        connectionLineStyle={{ stroke: "var(--accent)", strokeWidth: 2 }}
         onInit={handleInit}
         onNodesChange={onNodesChange}
         onMove={handleMove}

@@ -25,6 +25,7 @@ import type {
   OrchestrationLink,
   OrchestrationSource,
   OrchestrationSourceKind,
+  OrchestrationTargetKind,
 } from "../types/orchestration";
 
 /** Handle ids are `<prefix>-left` / `<prefix>-right`. */
@@ -155,16 +156,18 @@ export function OrchestratorOutPort() {
 export function OrchestrationInPort({
   color,
   title,
+  type = "target",
 }: {
   color: string;
   title?: string;
+  type?: "source" | "target";
 }) {
   return (
     <>
       {(["left", "right"] as const).map((side) => (
         <Handle
           key={side}
-          type="target"
+          type={type}
           id={`${ORCHESTRATION_IN_HANDLE}-${side}`}
           position={side === "left" ? Position.Left : Position.Right}
           className="nodrag nopan"
@@ -182,12 +185,72 @@ export function OrchestrationInPort({
  * port get a pipeline they can both talk over.
  */
 export function AgentPort({ color }: { color: string }) {
+  // "source" so a pipeline edge can start at an agent (the canvas runs in
+  // loose connection mode, where any port can also end a wire).
   return (
     <OrchestrationInPort
       color={color}
+      type="source"
       title="Drag to another agent or an AI node to wire a pipeline"
     />
   );
+}
+
+export type WireIntent =
+  | {
+      kind: "link";
+      orchestratorId: string;
+      targetKind: OrchestrationTargetKind;
+      targetId: string;
+    }
+  | { kind: "pipe"; a: string; b: string };
+
+/**
+ * What a wire dragged between two ports means, whichever way it was drawn:
+ * orchestrator ↔ agent/source is a link; agent ↔ agent/source is a pipeline.
+ * Returns null for wires that make no sense (shell ends, two sources, two
+ * orchestrators, a node to itself).
+ */
+export function resolveWireIntent(
+  connection: {
+    source: string | null;
+    target: string | null;
+    sourceHandle?: string | null;
+    targetHandle?: string | null;
+  },
+  context: {
+    orchestratorIds: string[];
+    sources: Record<string, unknown>;
+    isAgent: (nodeId: string) => boolean;
+  },
+): WireIntent | null {
+  const { source, target } = connection;
+  if (!source || !target || source === target) return null;
+  const ours = (handle: string | null | undefined) =>
+    isOrchestratorOutHandle(handle) || isOrchestrationInHandle(handle);
+  if (!ours(connection.sourceHandle) || !ours(connection.targetHandle)) return null;
+
+  const sourceIsOrchestrator = context.orchestratorIds.includes(source);
+  const targetIsOrchestrator = context.orchestratorIds.includes(target);
+  if (sourceIsOrchestrator && targetIsOrchestrator) return null;
+  if (sourceIsOrchestrator || targetIsOrchestrator) {
+    const orchestratorId = sourceIsOrchestrator ? source : target;
+    const other = sourceIsOrchestrator ? target : source;
+    if (other in context.sources) {
+      return { kind: "link", orchestratorId, targetKind: "source", targetId: other };
+    }
+    if (context.isAgent(other)) {
+      return { kind: "link", orchestratorId, targetKind: "terminal", targetId: other };
+    }
+    return null;
+  }
+
+  const sourceIsNode = source in context.sources;
+  const targetIsNode = target in context.sources;
+  if (sourceIsNode && targetIsNode) return null;
+  if (!sourceIsNode && !context.isAgent(source)) return null;
+  if (!targetIsNode && !context.isAgent(target)) return null;
+  return { kind: "pipe", a: source, b: target };
 }
 
 export function isOrchestratorOutHandle(id: string | null | undefined) {

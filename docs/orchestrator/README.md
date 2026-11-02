@@ -58,6 +58,7 @@ ekler; aşağıdaki liste commit sırasıyla aynıdır.
 46. [Gemini başlatma düzeltmesi](46-gemini-baslatma.md) — --prompt-interactive ve otomatik onay için --yolo
 47. [Orkestratör türü](47-orkestrator-turu.md) — createOrchestratorInScene type: claude | codex | gemini
 48. [Canvas: agent portları](48-agent-portlari.md) — portlar artık her agent'ta, agent rengiyle
+49. [Canvas: kablo çekme kuralları](49-baglanti-kurallari.md) — gevşek bağlantı modu, resolveWireIntent, pipeline'da otomatik bilgilendirme
 
 ## Nasıl kullanılır
 
