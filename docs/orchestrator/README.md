@@ -1,12 +1,23 @@
 # TermCanvas Orkestratör
 
 Bu fork, [TermCanvas](https://github.com/blueberrycongee/termcanvas) v0.39.10'a
-n8n tarzı bir **orkestratör agent** ekler: tek bir agent'a komut verirsin, o da
-canvas'ta kabloyla bağlı agent'lara iş dağıtır ve bağlı kaynakları (Google Sheet,
-n8n webhook, HTTP API, yerel dosya, not) kullanır.
+şunları ekler:
 
-Değişiklikler 15 commit halinde eklendi. Her commit kendi kısa notunu bu klasöre
-ekler; aşağıdaki liste commit sırasıyla aynıdır.
+- **Orkestratör agent:** tek bir agent'a komut verirsin, o da canvas'ta
+  kabloyla bağlı agent'lara iş dağıtır ve bağlı kaynakları (Google Sheet, n8n
+  webhook, HTTP API, yerel dosya, not) kullanır.
+- **Pipeline'lar:** Claude, Gemini, Codex (ve diğer CLI agent'ları) birbirine
+  kabloyla bağlanınca birbirine yazar, cevaplarını okur, tartışır. Mesajlar
+  kabloların üzerinde akarken görünür.
+- **AI Merkezi ve AI düğümleri:** Claude, Gemini, ChatGPT, DeepSeek, Grok,
+  Mistral, Perplexity, OpenRouter, Groq, Ollama, LM Studio ve OpenAI uyumlu
+  sunucular — API anahtarıyla ya da abonelik girişli CLI ile. Konsey (aynı
+  soruyu hepsine sor), canlı akış, canvas'ta AI düğümleri.
+- **Türkçe arayüz.**
+
+Değişiklikler 75 commit hâlinde eklendi: 1–15 orkestratör, 16–75 pipeline'lar,
+AI Merkezi ve Türkçe arayüz. Her commit kendi kısa notunu bu klasöre ekler;
+aşağıdaki liste commit sırasıyla aynıdır.
 
 ## Commit günlüğü
 
@@ -84,6 +95,7 @@ ekler; aşağıdaki liste commit sırasıyla aynıdır.
 72. [Testler pnpm test'te](72-test-listesi.md) — 605/607 geçiyor; 2 hata node-pty yerel modülü (ortam) kaynaklı
 73. [Kullanım kılavuzu](73-kullanim-kilavuzu.md) — üç agent'ı bağlama, AI Merkezi, orkestratör, tc.mjs komutları, notlar
 74. [Ana README notu](74-ana-readme.md) — fork notu yeni özellikleri ve kılavuzu gösteriyor
+75. [Özet: 16–75](75-ozet.md) — fork'un tüm eklentileri tek sayfada; 75 commit'lik günlük
 
 ## Nasıl kullanılır
 
