@@ -37,6 +37,7 @@ ekler; aşağıdaki liste commit sırasıyla aynıdır.
 25. [Haberleşme akışı: store](25-haberlesme-store.md) — kablo nabzı, meşgul model sayacı ve okunmamış rozeti
 26. [Veri modeli: pipeline ve AI düğümü](26-pipeline-veri-modeli.md) — yönsüz pipeline kabloları, ai kaynak türü, BridgeManifest
 27. [Store: pipeline kuralları](27-pipeline-kurallari.md) — connectPipe/disconnectPipe, orkestratöre çevirince pipeline'lar link olur
+28. [Store: AI düğümü](28-ai-dugumu-store.md) — addAiNode / updateAiConfig; ad bağlayıcıyı izler
 
 ## Nasıl kullanılır
 

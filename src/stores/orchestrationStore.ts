@@ -1,7 +1,13 @@
 import { create } from "zustand";
 import { useWorkspaceStore } from "./workspaceStore";
 import type { TerminalType } from "../types";
+import {
+  getAiConnector,
+  type AiConnectorId,
+  type AiTransport,
+} from "../../shared/ai-connectors";
 import type {
+  OrchestrationAiConfig,
   OrchestrationDocument,
   OrchestrationLink,
   OrchestrationPipe,
@@ -26,6 +32,8 @@ export function isAgentTerminalType(type: TerminalType): boolean {
 
 export const SOURCE_NODE_WIDTH = 300;
 export const SOURCE_NODE_HEIGHT = 190;
+export const AI_NODE_WIDTH = 320;
+export const AI_NODE_HEIGHT = 250;
 
 const DEFAULT_SOURCE_NAMES: Record<OrchestrationSourceKind, string> = {
   sheet: "Google Sheet",
@@ -44,6 +52,13 @@ interface OrchestrationStore extends OrchestrationDocument {
     position: { x: number; y: number },
   ) => string;
   updateSource: (id: string, patch: Partial<OrchestrationSource>) => void;
+  /** Add an AI model node answered by `connector` (Claude, Gemini, …). */
+  addAiNode: (
+    connector: AiConnectorId,
+    position: { x: number; y: number },
+    options?: { transport?: AiTransport; model?: string; name?: string; persona?: string },
+  ) => string;
+  updateAiConfig: (id: string, patch: Partial<OrchestrationAiConfig>) => void;
   removeSource: (id: string) => void;
   connect: (
     orchestratorId: string,
@@ -151,6 +166,52 @@ export const useOrchestrationStore = create<OrchestrationStore>((set, get) => ({
     if (!existing) return;
     set((state) => ({
       sources: { ...state.sources, [id]: { ...existing, ...patch, id } },
+    }));
+    markDirty();
+  },
+
+  addAiNode: (connector, position, options = {}) => {
+    const plugin = getAiConnector(connector);
+    const id = nextId("ai");
+    const source: OrchestrationSource = {
+      id,
+      kind: "ai",
+      name: options.name?.trim() || plugin?.name || DEFAULT_SOURCE_NAMES.ai,
+      url: "",
+      description: options.persona ?? "",
+      ai: {
+        connector,
+        model: options.model ?? "",
+        transport: options.transport ?? "api",
+      },
+      x: position.x,
+      y: position.y,
+      w: AI_NODE_WIDTH,
+      h: AI_NODE_HEIGHT,
+    };
+    set((state) => ({ sources: { ...state.sources, [id]: source } }));
+    markDirty();
+    return id;
+  },
+
+  updateAiConfig: (id, patch) => {
+    const existing = get().sources[id];
+    if (!existing || existing.kind !== "ai" || !existing.ai) return;
+    const ai: OrchestrationAiConfig = { ...existing.ai, ...patch };
+    const renamed =
+      patch.connector &&
+      patch.connector !== existing.ai.connector &&
+      existing.name === (getAiConnector(existing.ai.connector)?.name ?? "");
+    set((state) => ({
+      sources: {
+        ...state.sources,
+        [id]: {
+          ...existing,
+          ai,
+          // A node still named after its old connector follows the new one.
+          ...(renamed ? { name: getAiConnector(ai.connector)?.name ?? existing.name } : {}),
+        },
+      },
     }));
     markDirty();
   },
