@@ -37,6 +37,10 @@ const ACTIVE_STATES = new Set(["thinking", "in_turn", "tool_running", "tool_pend
 const STATE_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), ".state");
 const START_GRACE_MS = 30000;
 const MAX_PRINT_CHARS = 20000;
+// Agents without turn telemetry (e.g. Gemini CLI): a turn is over when the
+// agent printed something after our message and then went quiet this long.
+const QUIET_MS = 6000;
+const MIN_TURN_MS = 4000;
 
 function readPort() {
   let raw;
@@ -215,19 +219,31 @@ async function cmdWait(rest, flags) {
       sentAt = readSentAt(agentId);
     }
     const state = a.turnState || "unknown";
-    const startedAt = a.turnStartedAt ? Date.parse(a.turnStartedAt) : 0;
-    const started =
-      !sentAt ||
-      startedAt >= sentAt - 2000 ||
-      ACTIVE_STATES.has(state) ||
-      Date.now() - sentAt > START_GRACE_MS;
-    if (started && DONE_STATES.has(state)) {
+    let done = false;
+    if (state !== "unknown") {
+      const startedAt = a.turnStartedAt ? Date.parse(a.turnStartedAt) : 0;
+      const started =
+        !sentAt ||
+        startedAt >= sentAt - 2000 ||
+        ACTIVE_STATES.has(state) ||
+        Date.now() - sentAt > START_GRACE_MS;
+      done = started && DONE_STATES.has(state);
+    } else {
+      const lastOutput = a.lastOutputAt ? Date.parse(a.lastOutputAt) : 0;
+      const answered = !sentAt || lastOutput > sentAt + 1000;
+      done =
+        answered &&
+        lastOutput > 0 &&
+        Date.now() - lastOutput >= QUIET_MS &&
+        Date.now() - sentAt >= MIN_TURN_MS;
+    }
+    if (done && !a.awaitingApproval) {
       const r = await api("GET", BASE + "/reply?agent=" + encodeURIComponent(agentId));
-      console.log("[" + a.name + " finished: " + state + "]");
+      console.log("[" + a.name + " finished" + (state === "unknown" ? "" : ": " + state) + "]");
       console.log(truncate(r.reply || "(no reply text found)", MAX_PRINT_CHARS));
       return 0;
     }
-    if (state === "awaiting_input") {
+    if (state === "awaiting_input" || a.awaitingApproval) {
       console.log(
         "WAITING_FOR_APPROVAL: " + a.name + " is waiting for the user to approve or answer something in its terminal.",
       );
@@ -238,7 +254,10 @@ async function cmdWait(rest, flags) {
       throw new Error(a.name + " is not running. Ask the user to open or restart that terminal.");
     }
     if (Date.now() >= deadline) {
-      console.log("STILL_WORKING: " + a.name + " state=" + state + ". Run wait again.");
+      console.log(
+        "STILL_WORKING: " + a.name + " state=" + state + ". Run wait again" +
+          (state === "unknown" ? " (or reply " + agentRef + " to read its screen so far)." : "."),
+      );
       process.exitCode = 2;
       return 2;
     }

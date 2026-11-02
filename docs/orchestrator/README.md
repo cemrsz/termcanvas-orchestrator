@@ -48,6 +48,7 @@ ekler; aşağıdaki liste commit sırasıyla aynıdır.
 36. [Akışa kayıt](36-akisa-kayit.md) — send/reply tekrar etmeden kaydedilir; source/trigger /event ile bildirilir
 37. [Ekrandan cevap okuma](37-ekrandan-cevap.md) — Gemini CLI gibi kaydı olmayan agent'ların cevabı ekrandan
 38. [Ekran okuma köprüye bağlandı](38-ekran-baglantisi.md) — xterm ekran metni, son mesajdan sonrası cevap, awaitingApproval
+39. [wait: sessizlikle tur sonu](39-sessizlik-algilama.md) — tur bilgisi olmayan agent'larda 6 sn sessizlik = cevap hazır
 
 ## Nasıl kullanılır
 
