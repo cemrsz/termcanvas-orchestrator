@@ -52,6 +52,7 @@ ekler; aşağıdaki liste commit sırasıyla aynıdır.
 40. [Köprü CLI: modeller ve konsey](40-model-komutlari.md) — agent veya modele sor, aynı soruyu herkese sor, toplu mesaj
 41. [discuss: AI'lar sırayla tartışır](41-tartisma.md) — katılımcılar birbirinin cevabını görerek tur tur konuşur
 42. [Köprü CLI: kum havuzu ipuçları](42-kum-havuzu-ipuclari.md) — EPERM/ECONNREFUSED için yükseltilmiş izinle tekrar dene
+43. [ORCHESTRATOR.md: modeller](43-orkestrator-talimati.md) — modeller düşünmek için; council/discuss ne zaman kullanılır
 
 ## Nasıl kullanılır
 
