@@ -16,6 +16,7 @@ import {
   useAiConnectorStore,
 } from "../stores/aiConnectorStore";
 import { useCommsStore } from "../stores/commsStore";
+import { useAiHubStore } from "../stores/aiHubStore";
 import type { CommsEntry } from "../../shared/comms";
 import { OrchestrationInPort, type SourceFlowNode } from "./orchestrationFlow";
 
@@ -299,8 +300,9 @@ export function AiNode({ data }: NodeProps<SourceFlowNode>) {
               );
             })}
           </div>
-          <span
-            className="tc-caption flex min-w-0 items-center gap-1 truncate"
+          <button
+            type="button"
+            className="nodrag tc-caption flex min-w-0 items-center gap-1 truncate rounded px-0.5 hover:underline"
             style={{
               color:
                 ready.ok === false
@@ -309,7 +311,12 @@ export function AiNode({ data }: NodeProps<SourceFlowNode>) {
                     ? "var(--text-secondary)"
                     : "var(--text-faint)",
             }}
-            title={ready.text}
+            title={t["ai.node.openHub"](plugin.name)}
+            onMouseDown={stop}
+            onClick={(e) => {
+              e.stopPropagation();
+              useAiHubStore.getState().openHub("connectors", plugin.id);
+            }}
           >
             <span
               aria-hidden="true"
@@ -324,7 +331,7 @@ export function AiNode({ data }: NodeProps<SourceFlowNode>) {
               }}
             />
             {ready.text}
-          </span>
+          </button>
         </div>
 
         <textarea

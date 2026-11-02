@@ -1053,6 +1053,7 @@ export const en = {
   "ai.node.cliDefault": "CLI's default model",
   "ai.node.notWired": "Not wired: drag from an agent's port to here",
   "ai.node.remove": "Remove AI node",
+  "ai.node.openHub": (name: string) => `Set up ${name} in the AI Hub`,
   "ai.node.test": "Test",
   "ai.node.testTitle": "Send a short test question with this node's settings",
   "ai.node.testPrompt":

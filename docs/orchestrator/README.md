@@ -74,6 +74,7 @@ ekler; aşağıdaki liste commit sırasıyla aynıdır.
 62. [AI Hub: kart ayrıntıları](62-hub-kart-ayrintilari.md) — CLI sürümü, model listesi çekme, API/CLI testi, tek tıkla canvas'a ekle
 63. [AI Hub: Konsey](63-hub-konsey.md) — çoklu AI'a tek soru, yan yana cevaplar, tek tıkla sentez
 64. [AI Hub: Akış](64-hub-akis.md) — kim kime ne dedi; filtre, arama, okunmamış sayacı
+65. [AI düğümünden Hub'a](65-dugumden-hub.md) — anahtar yok uyarısına tıkla, Hub o sağlayıcıda açılsın
 
 ## Nasıl kullanılır
 
