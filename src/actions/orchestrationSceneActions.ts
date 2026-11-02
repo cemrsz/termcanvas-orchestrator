@@ -4,7 +4,13 @@ import {
   pipePeers,
   useOrchestrationStore,
 } from "../stores/orchestrationStore";
-import { getAiConnector } from "../../shared/ai-connectors";
+import {
+  getAiConnector,
+  pickTransport,
+  type AiConnectorId,
+  type AiTransport,
+} from "../../shared/ai-connectors";
+import { useAiConnectorStore } from "../stores/aiConnectorStore";
 import { resolveTerminalWithRuntimeState } from "../stores/terminalRuntimeStateStore";
 import { useNotificationStore } from "../stores/notificationStore";
 import { createTerminalInScene } from "./terminalSceneActions";
@@ -293,6 +299,39 @@ export function addOrchestrationSourceInScene(
   const orchestratorId =
     connectTo ?? (store.orchestratorIds.length === 1 ? store.orchestratorIds[0] : undefined);
   if (orchestratorId) {
+    useOrchestrationStore.getState().connect(orchestratorId, "source", id);
+  }
+  return id;
+}
+
+/**
+ * Add an AI model node. It starts on the API when that can be called, on
+ * the CLI when only the CLI is set up (e.g. Gemini with a Google login), and
+ * joins the orchestrator when there is exactly one.
+ */
+export function addAiNodeInScene(
+  connector: AiConnectorId,
+  position: { x: number; y: number },
+  options: {
+    connectTo?: string;
+    transport?: AiTransport;
+    persona?: string;
+    name?: string;
+  } = {},
+): string | null {
+  const plugin = getAiConnector(connector);
+  if (!plugin) return null;
+  const status = useAiConnectorStore.getState().statuses[connector];
+  const store = useOrchestrationStore.getState();
+  const id = store.addAiNode(connector, position, {
+    transport: options.transport ?? pickTransport(plugin, status),
+    persona: options.persona,
+    name: options.name,
+  });
+  const orchestratorId =
+    options.connectTo ??
+    (store.orchestratorIds.length === 1 ? store.orchestratorIds[0] : undefined);
+  if (orchestratorId && store.orchestratorIds.includes(orchestratorId)) {
     useOrchestrationStore.getState().connect(orchestratorId, "source", id);
   }
   return id;

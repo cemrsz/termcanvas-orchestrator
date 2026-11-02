@@ -63,7 +63,9 @@ import {
 import {
   buildOrchestrationEdges,
   buildPipeEdges,
+  ORCHESTRATOR_COLOR,
   resolveWireIntent,
+  SOURCE_KIND_META,
   buildSourceFlowNodes,
   orchestrationEdgeTypes,
   sourcesLayoutKey,
@@ -77,11 +79,18 @@ import {
 } from "../stores/orchestrationStore";
 import { useTerminalRuntimeStateStore } from "../stores/terminalRuntimeStateStore";
 import {
+  addAiNodeInScene,
   addOrchestrationSourceInScene,
   connectPipeInScene,
   createOrchestratorInScene,
+  ORCHESTRATOR_TYPES,
   refreshOrchestratorWorkspaces,
+  type OrchestratorType,
 } from "../actions/orchestrationSceneActions";
+import {
+  sortedAiConnectors,
+  type AiConnectorId,
+} from "../../shared/ai-connectors";
 import type { OrchestrationSourceKind } from "../types/orchestration";
 import {
   getCanvasLeftInset,
@@ -92,7 +101,7 @@ import { resolveCollisions } from "./collisionResolver";
 import { WorktreeLabelLayer } from "./WorktreeLabelLayer";
 import { ClusterLinkLayer } from "./ClusterLinkLayer";
 import { SpatialWaypointsLayer } from "./SpatialWaypointsLayer";
-import { ContextMenu } from "../components/ContextMenu";
+import { ContextMenu, type MenuItem } from "../components/ContextMenu";
 import { createTerminalInScene } from "../actions/terminalSceneActions";
 import type { TerminalType } from "../types";
 
@@ -426,15 +435,27 @@ function XyFlowCanvasInner() {
     return { projectId: fallbackProject.id, worktreeId: fallbackWorktree.id };
   }, []);
 
-  const handleContextMenuOrchestrator = useCallback(() => {
-    if (!contextMenu) return;
-    const target = resolveContextWorktree();
-    if (!target) return;
-    void createOrchestratorInScene({
-      ...target,
-      position: { x: contextMenu.flowX, y: contextMenu.flowY },
-    });
-  }, [contextMenu, resolveContextWorktree]);
+  const handleContextMenuOrchestrator = useCallback(
+    (type: OrchestratorType) => {
+      if (!contextMenu) return;
+      const target = resolveContextWorktree();
+      if (!target) return;
+      void createOrchestratorInScene({
+        ...target,
+        type,
+        position: { x: contextMenu.flowX, y: contextMenu.flowY },
+      });
+    },
+    [contextMenu, resolveContextWorktree],
+  );
+
+  const handleContextMenuAi = useCallback(
+    (connector: AiConnectorId) => {
+      if (!contextMenu) return;
+      addAiNodeInScene(connector, { x: contextMenu.flowX, y: contextMenu.flowY });
+    },
+    [contextMenu],
+  );
 
   const handleContextMenuSource = useCallback(
     (kind: OrchestrationSourceKind) => {
@@ -962,50 +983,51 @@ function XyFlowCanvasInner() {
               },
             },
             { type: "separator" },
-            {
-              label: "New Shell",
-              onClick: () => handleContextMenuPick("shell"),
-            },
-            {
-              label: "New Claude",
-              onClick: () => handleContextMenuPick("claude"),
-            },
-            {
-              label: "New Codex",
-              onClick: () => handleContextMenuPick("codex"),
-            },
-            {
-              label: "New Gemini",
-              onClick: () => handleContextMenuPick("gemini"),
-            },
-            {
-              label: "New Lazygit",
-              onClick: () => handleContextMenuPick("lazygit"),
-            },
+            ...(["shell", "claude", "codex", "gemini", "lazygit"] as const).map(
+              (type): MenuItem => ({
+                label: t["canvas.menu.new"](TERMINAL_TYPE_CONFIG[type].label),
+                color: type === "shell" ? undefined : TERMINAL_TYPE_CONFIG[type].color,
+                onClick: () => handleContextMenuPick(type),
+              }),
+            ),
             { type: "separator" },
             {
-              label: "New Orchestrator",
-              onClick: handleContextMenuOrchestrator,
+              type: "submenu",
+              label: t["canvas.menu.newOrchestrator"],
+              color: ORCHESTRATOR_COLOR,
+              items: ORCHESTRATOR_TYPES.map((type) => ({
+                label: TERMINAL_TYPE_CONFIG[type].label,
+                color: TERMINAL_TYPE_CONFIG[type].color,
+                onClick: () => handleContextMenuOrchestrator(type),
+              })),
             },
             {
-              label: "Add Google Sheet",
-              onClick: () => handleContextMenuSource("sheet"),
+              type: "submenu",
+              label: t["canvas.menu.addAi"],
+              items: sortedAiConnectors().flatMap((plugin, index, all): MenuItem[] => [
+                ...(index > 0 && all[index - 1].featured && !plugin.featured
+                  ? [{ type: "separator" as const }]
+                  : []),
+                {
+                  label: plugin.name,
+                  color: plugin.color,
+                  hint: plugin.local
+                    ? t["canvas.menu.aiHint.local"]
+                    : plugin.cli
+                      ? t["canvas.menu.aiHint.both"]
+                      : undefined,
+                  onClick: () => handleContextMenuAi(plugin.id),
+                },
+              ]),
             },
             {
-              label: "Add n8n Webhook",
-              onClick: () => handleContextMenuSource("n8n"),
-            },
-            {
-              label: "Add HTTP API",
-              onClick: () => handleContextMenuSource("api"),
-            },
-            {
-              label: "Add Local File",
-              onClick: () => handleContextMenuSource("file"),
-            },
-            {
-              label: "Add Note",
-              onClick: () => handleContextMenuSource("note"),
+              type: "submenu",
+              label: t["canvas.menu.addSource"],
+              items: (["sheet", "n8n", "api", "file", "note"] as const).map((kind) => ({
+                label: t[`canvas.menu.source.${kind}`],
+                color: SOURCE_KIND_META[kind].color,
+                onClick: () => handleContextMenuSource(kind),
+              })),
             },
           ]}
           onClose={() => setContextMenu(null)}

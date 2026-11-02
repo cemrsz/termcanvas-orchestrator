@@ -1060,6 +1060,19 @@ export const en = {
   "ai.node.thinking": "thinking…",
   "ai.node.lastAnswer": "Last answer",
   "ai.node.lastError": "Last error",
+
+  // Canvas right-click menu
+  "canvas.menu.new": (label: string) => `New ${label}`,
+  "canvas.menu.newOrchestrator": "New Orchestrator",
+  "canvas.menu.addAi": "Add AI Model",
+  "canvas.menu.addSource": "Add Source",
+  "canvas.menu.aiHint.both": "API · CLI",
+  "canvas.menu.aiHint.local": "local",
+  "canvas.menu.source.sheet": "Google Sheet",
+  "canvas.menu.source.n8n": "n8n Webhook",
+  "canvas.menu.source.api": "HTTP API",
+  "canvas.menu.source.file": "Local File",
+  "canvas.menu.source.note": "Note",
 } as const;
 
 export type TranslationKey = keyof typeof en;

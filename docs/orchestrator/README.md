@@ -65,6 +65,7 @@ ekler; aşağıdaki liste commit sırasıyla aynıdır.
 53. [Canvas: AI düğümü](53-ai-dugumu.md) — sağlayıcı seçimi, model önerileri, hazır olma durumu, persona
 54. [AI düğümü: test ve son cevap](54-ai-dugumu-test.md) — tek tıkla test, cevap beklerken parlama, son cevap önizlemesi
 55. [Sağ tık menüsünde alt menü](55-alt-menu.md) — fare ve klavyeyle iç içe menü; ekrana sığacak şekilde konumlanır
+56. [Canvas sağ tık menüsü](56-canvas-menusu.md) — Yeni Orkestratör ▸, AI Modeli Ekle ▸, Kaynak Ekle ▸; çeviriye hazır
 
 ## Nasıl kullanılır
 
