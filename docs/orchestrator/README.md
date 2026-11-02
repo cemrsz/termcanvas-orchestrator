@@ -40,6 +40,7 @@ ekler; aşağıdaki liste commit sırasıyla aynıdır.
 28. [Store: AI düğümü](28-ai-dugumu-store.md) — addAiNode / updateAiConfig; ad bağlayıcıyı izler
 29. [Kalıcılık: pipeline ve AI düğümü](29-pipeline-kalicilik.md) — doğrulayarak okuma, ölü uçları ayıklayarak kaydetme
 30. [Test: pipeline](30-test-pipeline.md) — store kuralları, orkestratöre dönüşüm, kayıt/geri yükleme
+31. [Köprü manifesti](31-kopru-manifesti.md) — her agent'ın erişebildiği eşler, modeller ve kaynaklar; kabuklar hariç
 
 ## Nasıl kullanılır
 

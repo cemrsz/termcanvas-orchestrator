@@ -52,6 +52,7 @@ import { CanvasManagerModal } from "./components/CanvasManagerModal";
 import { updateWindowTitle } from "./titleHelper";
 import { resolveTerminalWithRuntimeState } from "./stores/terminalRuntimeStateStore";
 import {
+  buildBridgeManifest,
   buildOrchestratorManifest,
   listOrchestrators,
 } from "./actions/orchestrationSceneActions";
@@ -455,6 +456,9 @@ export function App() {
 
       getOrchestratorManifest: (orchestratorId: string) =>
         JSON.parse(JSON.stringify(buildOrchestratorManifest(orchestratorId))),
+
+      getBridgeManifest: (terminalId: string) =>
+        JSON.parse(JSON.stringify(buildBridgeManifest(terminalId))),
     };
 
     (window as any).__tcApi = api;

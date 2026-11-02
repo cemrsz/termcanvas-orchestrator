@@ -1,13 +1,20 @@
 import { createTerminal, useProjectStore } from "../stores/projectStore";
 import {
   isAgentTerminalType,
+  pipePeers,
   useOrchestrationStore,
 } from "../stores/orchestrationStore";
+import { getAiConnector } from "../../shared/ai-connectors";
 import { resolveTerminalWithRuntimeState } from "../stores/terminalRuntimeStateStore";
 import { useNotificationStore } from "../stores/notificationStore";
 import { createTerminalInScene } from "./terminalSceneActions";
 import type { ProjectData, TerminalData } from "../types";
 import type {
+  BridgeAgent,
+  BridgeManifest,
+  BridgeModel,
+  BridgeSource,
+  OrchestrationSource,
   OrchestrationSourceKind,
   OrchestratorManifest,
 } from "../types/orchestration";
@@ -172,60 +179,108 @@ export function getTerminalDisplayName(terminal: TerminalData): string {
   return terminal.customTitle?.trim() || terminal.title;
 }
 
+function toBridgeModel(source: OrchestrationSource): BridgeModel | null {
+  if (source.kind !== "ai" || !source.ai) return null;
+  const plugin = getAiConnector(source.ai.connector);
+  if (!plugin) return null;
+  return {
+    id: source.id,
+    name: source.name.trim() || plugin.name,
+    connector: plugin.id,
+    connectorName: plugin.name,
+    model: source.ai.model,
+    transport: source.ai.transport,
+    persona: source.description,
+    baseURL: source.url,
+  };
+}
+
+function toBridgeSource(source: OrchestrationSource): BridgeSource {
+  return {
+    id: source.id,
+    kind: source.kind,
+    name: source.name,
+    url: source.url,
+    description: source.description,
+  };
+}
+
+/**
+ * What the API exposes to one agent: only what is wired to it. An
+ * orchestrator sees its links; every agent sees its pipeline peers. Only
+ * agent terminals can be peers — a shell would run a message as a command.
+ */
+export function buildBridgeManifest(terminalId: string): BridgeManifest | null {
+  const { orchestratorIds, links, pipes, sources } =
+    useOrchestrationStore.getState();
+  const self = findTerminal(terminalId);
+  if (!self) return null;
+  const isOrchestrator = orchestratorIds.includes(terminalId);
+
+  const agents: BridgeAgent[] = [];
+  const models: BridgeModel[] = [];
+  const wiredSources: BridgeSource[] = [];
+  const seen = new Set<string>([terminalId]);
+
+  const addNode = (nodeId: string, via: BridgeAgent["via"]) => {
+    if (seen.has(nodeId)) return;
+    seen.add(nodeId);
+    const source = sources[nodeId];
+    if (source) {
+      if (source.kind === "ai") {
+        const model = toBridgeModel(source);
+        if (model) models.push(model);
+      } else {
+        wiredSources.push(toBridgeSource(source));
+      }
+      return;
+    }
+    const target = findTerminal(nodeId);
+    if (!target || target.terminal.stashed) return;
+    if (!isAgentTerminalType(target.terminal.type)) return;
+    const live = resolveTerminalWithRuntimeState(target.terminal);
+    agents.push({
+      id: target.terminal.id,
+      name: getTerminalDisplayName(target.terminal),
+      type: target.terminal.type,
+      status: live.status,
+      ptyId: live.ptyId,
+      worktreePath: target.worktree.path,
+      project: target.project.name,
+      via,
+    });
+  };
+
+  if (isOrchestrator) {
+    for (const link of links) {
+      if (link.orchestratorId === terminalId) addNode(link.targetId, "orchestrator");
+    }
+  }
+  for (const peer of pipePeers(pipes, terminalId)) addNode(peer, "pipeline");
+
+  return {
+    self: {
+      id: self.terminal.id,
+      title: getTerminalDisplayName(self.terminal),
+      type: self.terminal.type,
+      worktreePath: self.worktree.path,
+      role: isOrchestrator ? "orchestrator" : "agent",
+    },
+    agents,
+    models,
+    sources: wiredSources,
+  };
+}
+
 /** What the API exposes to one orchestrator: only its wired nodes. */
 export function buildOrchestratorManifest(
   orchestratorId: string,
 ): OrchestratorManifest | null {
-  const { orchestratorIds, links, sources } = useOrchestrationStore.getState();
-  if (!orchestratorIds.includes(orchestratorId)) return null;
-  const orchestrator = findTerminal(orchestratorId);
-  if (!orchestrator) return null;
-
-  const agents: OrchestratorManifest["agents"] = [];
-  const wiredSources: OrchestratorManifest["sources"] = [];
-  for (const link of links) {
-    if (link.orchestratorId !== orchestratorId) continue;
-    if (link.targetKind === "terminal") {
-      const target = findTerminal(link.targetId);
-      if (!target || target.terminal.stashed) continue;
-      const live = resolveTerminalWithRuntimeState(target.terminal);
-      agents.push({
-        id: target.terminal.id,
-        name: getTerminalDisplayName(target.terminal),
-        type: target.terminal.type,
-        status: live.status,
-        ptyId: live.ptyId,
-        worktreePath: target.worktree.path,
-        project: target.project.name,
-        via: "orchestrator",
-      });
-    } else {
-      const source = sources[link.targetId];
-      if (!source) continue;
-      wiredSources.push({
-        id: source.id,
-        kind: source.kind,
-        name: source.name,
-        url: source.url,
-        description: source.description,
-      });
-    }
+  if (!useOrchestrationStore.getState().orchestratorIds.includes(orchestratorId)) {
+    return null;
   }
-
-  const self = {
-    id: orchestrator.terminal.id,
-    title: getTerminalDisplayName(orchestrator.terminal),
-    type: orchestrator.terminal.type,
-    worktreePath: orchestrator.worktree.path,
-    role: "orchestrator" as const,
-  };
-  return {
-    self,
-    orchestrator: self,
-    agents,
-    models: [],
-    sources: wiredSources,
-  };
+  const manifest = buildBridgeManifest(orchestratorId);
+  return manifest ? { ...manifest, orchestrator: manifest.self } : null;
 }
 
 export function listOrchestrators() {
@@ -236,6 +291,7 @@ export function listOrchestrators() {
     .map((manifest) => ({
       ...manifest.orchestrator,
       agents: manifest.agents.length,
+      models: manifest.models.length,
       sources: manifest.sources.length,
     }));
 }
