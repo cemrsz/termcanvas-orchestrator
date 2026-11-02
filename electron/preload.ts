@@ -683,7 +683,18 @@ contextBridge.exposeInMainWorld("termcanvas", {
     checkCli: (id: string) => ipcRenderer.invoke("ai:check-cli", id),
     listModels: (id: string, baseURL?: string) =>
       ipcRenderer.invoke("ai:list-models", id, baseURL),
-    invoke: (request: unknown) => ipcRenderer.invoke("ai:invoke", request),
+    invoke: (request: unknown, log?: unknown) =>
+      ipcRenderer.invoke("ai:invoke", request, log),
+  },
+  comms: {
+    list: (limit?: number) => ipcRenderer.invoke("comms:list", limit),
+    clear: () => ipcRenderer.invoke("comms:clear"),
+    onEntry: (callback: (entry: unknown) => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, entry: unknown) =>
+        callback(entry);
+      ipcRenderer.on("comms:entry", listener);
+      return () => ipcRenderer.removeListener("comms:entry", listener);
+    },
   },
   orchestrator: {
     prepare: (terminalId: string, worktreePath: string) =>

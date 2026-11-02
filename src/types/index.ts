@@ -18,6 +18,7 @@ import type {
   AiInvokeOutcome,
   AiInvokeRequest,
 } from "../../shared/ai-connectors";
+import type { CommsEntry, CommsParty } from "../../shared/comms";
 import type {
   Pin,
   PinLink,
@@ -1004,7 +1005,16 @@ export interface TermCanvasAPI {
       | { ok: true; models: string[] }
       | { ok: false; code: AiErrorCode; error: string }
     >;
-    invoke: (request: AiInvokeRequest) => Promise<AiInvokeOutcome>;
+    /** `log` puts the call in the comms feed as asked by the user. */
+    invoke: (
+      request: AiInvokeRequest,
+      log?: { to: CommsParty; label?: string },
+    ) => Promise<AiInvokeOutcome>;
+  };
+  comms: {
+    list: (limit?: number) => Promise<CommsEntry[]>;
+    clear: () => Promise<void>;
+    onEntry: (callback: (entry: CommsEntry) => void) => () => void;
   };
   orchestrator: {
     prepare: (

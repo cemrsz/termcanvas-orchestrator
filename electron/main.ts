@@ -64,6 +64,8 @@ import {
 import { AiConnectorService } from "./ai-connector-service";
 import { AiConnectorError } from "./ai-connector-http";
 import { runResolvedProcess } from "./ai-connector-cli";
+import { CommsLog } from "./comms-log";
+import { USER_PARTY, type CommsParty } from "../shared/comms";
 import {
   isAiConnectorId,
   isAiTransport,
@@ -390,6 +392,11 @@ const aiConnectorService = new AiConnectorService({
   },
   now: () => Date.now(),
   tmpDir: () => os.tmpdir(),
+});
+
+const commsLog = new CommsLog();
+commsLog.subscribe((entry) => {
+  sendToWindow(mainWindow, "comms:entry", entry);
 });
 
 function toAiErrorOutcome(error: unknown): Extract<AiInvokeOutcome, { ok: false }> {
@@ -1977,7 +1984,26 @@ function setupIpc() {
   );
   ipcMain.handle(
     "ai:invoke",
-    async (_event, request: AiInvokeRequest): Promise<AiInvokeOutcome> => {
+    async (
+      _event,
+      request: AiInvokeRequest,
+      log?: { to?: CommsParty; label?: string },
+    ): Promise<AiInvokeOutcome> => {
+      // Calls made from the UI (AI Hub, node test) show up in the feed too.
+      const model = log?.to;
+      const correlationId = model
+        ? `hub-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`
+        : undefined;
+      if (model) {
+        commsLog.record({
+          kind: "ask",
+          from: USER_PARTY,
+          to: model,
+          text: request?.prompt ?? "",
+          correlationId,
+          meta: { label: log?.label, transport: request?.transport, via: "hub" },
+        });
+      }
       try {
         if (!request || !isAiTransport(request.transport)) {
           throw new Error("transport must be api or cli");
@@ -1986,12 +2012,47 @@ function setupIpc() {
           ...request,
           connector: requireConnectorId(request.connector),
         });
+        if (model) {
+          commsLog.record({
+            kind: "answer",
+            from: model,
+            to: USER_PARTY,
+            text: result.text,
+            correlationId,
+            meta: {
+              label: log?.label,
+              latencyMs: result.latencyMs,
+              inputTokens: result.usage?.inputTokens,
+              outputTokens: result.usage?.outputTokens,
+              model: result.model,
+              transport: result.transport,
+              via: "hub",
+            },
+          });
+        }
         return { ok: true, ...result };
       } catch (error) {
-        return toAiErrorOutcome(error);
+        const outcome = toAiErrorOutcome(error);
+        if (model) {
+          commsLog.record({
+            kind: "error",
+            from: model,
+            to: USER_PARTY,
+            text: outcome.error,
+            correlationId,
+            meta: { label: log?.label, via: "hub" },
+          });
+        }
+        return outcome;
       }
     },
   );
+  ipcMain.handle("comms:list", (_event, limit?: number) =>
+    commsLog.list(typeof limit === "number" ? limit : undefined),
+  );
+  ipcMain.handle("comms:clear", () => {
+    commsLog.clear();
+  });
 
   ipcMain.handle(
     "orchestrator:prepare",
