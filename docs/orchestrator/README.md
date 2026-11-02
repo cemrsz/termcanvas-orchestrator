@@ -79,6 +79,7 @@ ekler; aşağıdaki liste commit sırasıyla aynıdır.
 67. [Komut paleti: AI](67-komut-paleti.md) — Hub/konsey/akış, üçlü ve konsey şablonları, her sağlayıcı için ekle
 68. [Çeviri: Çince](68-cince-ceviri.md) — AI düğümü, menüler, Hub ve akış metinleri Çince
 69. [Türkçe arayüz dili](69-turkce-dil.md) — Ayarlar'da Türkçe; AI Merkezi, menüler ve düğümler Türkçe
+70. [Türkçe: mevcut arayüz](70-turkce-arayuz.md) — en görünür ~280 metin Türkçe; toplam 403 anahtar
 
 ## Nasıl kullanılır
 
