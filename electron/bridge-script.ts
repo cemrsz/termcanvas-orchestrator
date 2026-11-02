@@ -194,25 +194,31 @@ async function cmdStatus() {
   console.log(lines.join("\n"));
 }
 
-async function cmdSend(rest, flags) {
-  const agent = rest.shift();
-  if (!agent) throw new Error("Usage: send <agent> <text> | --file <path>");
-  const text = readTextArg(rest, flags);
-  const result = await api("POST", BASE + "/send", { agent, text });
+async function sendTo(agentRef, text, options) {
+  const result = await api("POST", BASE + "/send", { agent: agentRef, text });
   recordSent(result.agent.id);
-  console.log("Sent to " + result.agent.name + " (" + result.agent.id + ").");
+  if (!options || !options.quiet) {
+    console.log("Sent to " + result.agent.name + " (" + result.agent.id + ").");
+  }
   return result.agent;
 }
 
-async function cmdWait(rest, flags) {
-  const agentRef = rest.shift();
-  if (!agentRef) throw new Error("Usage: wait <agent> [--timeout 100]");
-  const timeoutMs = (parseInt(flags.timeout, 10) || 100) * 1000;
-  const deadline = Date.now() + timeoutMs;
+async function cmdSend(rest, flags) {
+  const agent = rest.shift();
+  if (!agent) throw new Error("Usage: send <agent> <text> | --file <path>");
+  return sendTo(agent, readTextArg(rest, flags));
+}
+
+/**
+ * Poll until the agent's turn is over. Returns { code, name, state, reply }:
+ * code 0 = reply ready, 2 = still working, 3 = waiting for the user.
+ */
+async function waitFor(agentRef, timeoutSec) {
+  const deadline = Date.now() + (timeoutSec || 100) * 1000;
   let agentId = null;
   let sentAt = 0;
   while (true) {
-    const info = await api("GET", BASE + "/agent?waiting=1&agent=" + encodeURIComponent(agentRef));
+    const info = await api("GET", BASE + "/agent?waiting=1&agent=" + encodeURIComponent(agentId || agentRef));
     const a = info.agent;
     if (!agentId) {
       agentId = a.id;
@@ -239,30 +245,202 @@ async function cmdWait(rest, flags) {
     }
     if (done && !a.awaitingApproval) {
       const r = await api("GET", BASE + "/reply?agent=" + encodeURIComponent(agentId));
-      console.log("[" + a.name + " finished" + (state === "unknown" ? "" : ": " + state) + "]");
-      console.log(truncate(r.reply || "(no reply text found)", MAX_PRINT_CHARS));
-      return 0;
+      return { code: 0, id: a.id, name: a.name, state, reply: r.reply || "" };
     }
     if (state === "awaiting_input" || a.awaitingApproval) {
-      console.log(
-        "WAITING_FOR_APPROVAL: " + a.name + " is waiting for the user to approve or answer something in its terminal.",
-      );
-      process.exitCode = 3;
-      return 3;
+      return { code: 3, id: a.id, name: a.name, state };
     }
     if (!a.ptyId) {
       throw new Error(a.name + " is not running. Ask the user to open or restart that terminal.");
     }
-    if (Date.now() >= deadline) {
-      console.log(
-        "STILL_WORKING: " + a.name + " state=" + state + ". Run wait again" +
-          (state === "unknown" ? " (or reply " + agentRef + " to read its screen so far)." : "."),
-      );
-      process.exitCode = 2;
-      return 2;
-    }
+    if (Date.now() >= deadline) return { code: 2, id: a.id, name: a.name, state };
     await new Promise((resolve) => setTimeout(resolve, 2500));
   }
+}
+
+function printWaitResult(result, agentRef) {
+  if (result.code === 0) {
+    console.log("[" + result.name + " finished" + (result.state === "unknown" ? "" : ": " + result.state) + "]");
+    console.log(truncate(result.reply || "(no reply text found)", MAX_PRINT_CHARS));
+  } else if (result.code === 3) {
+    console.log(
+      "WAITING_FOR_APPROVAL: " + result.name + " is waiting for the user to approve or answer something in its terminal.",
+    );
+  } else {
+    console.log(
+      "STILL_WORKING: " + result.name + " state=" + result.state + ". Run wait again" +
+        (result.state === "unknown" ? " (or reply " + agentRef + " to read its screen so far)." : "."),
+    );
+  }
+  if (result.code !== 0) process.exitCode = result.code;
+  return result.code;
+}
+
+async function cmdWait(rest, flags) {
+  const agentRef = rest.shift();
+  if (!agentRef) throw new Error("Usage: wait <agent> [--timeout 100]");
+  return printWaitResult(await waitFor(agentRef, parseInt(flags.timeout, 10) || 100), agentRef);
+}
+
+// ---- AI models -------------------------------------------------------------
+
+function matchModels(models, ref) {
+  const numbered = /^M(\d+)$/i.exec(ref);
+  if (numbered) {
+    const model = models[parseInt(numbered[1], 10) - 1];
+    return model ? [model] : [];
+  }
+  const lower = ref.toLowerCase();
+  const exact = models.filter((m) => m.id === ref || m.name.toLowerCase() === lower);
+  if (exact.length > 0) return exact;
+  return models.filter(
+    (m) =>
+      m.connector === lower ||
+      m.connectorName.toLowerCase() === lower ||
+      m.name.toLowerCase().includes(lower),
+  );
+}
+
+function matchAgents(agents, ref) {
+  if (/^\d+$/.test(ref)) {
+    const agent = agents[parseInt(ref, 10) - 1];
+    return agent ? [agent] : [];
+  }
+  const lower = ref.toLowerCase();
+  const exact = agents.filter((a) => a.id === ref || a.name.toLowerCase() === lower);
+  if (exact.length > 0) return exact;
+  return agents.filter((a) => a.type === lower || a.name.toLowerCase().includes(lower));
+}
+
+/** Decide whether a reference names a wired agent or a wired model. */
+function classifyPeer(manifest, ref) {
+  const models = matchModels(manifest.models, ref);
+  const agents = /^M\d+$/i.test(ref) ? [] : matchAgents(manifest.agents, ref);
+  if (agents.length === 1 && models.length === 0) return { kind: "agent", item: agents[0] };
+  if (models.length === 1 && agents.length === 0) return { kind: "model", item: models[0] };
+  if (agents.length === 0 && models.length === 0) {
+    throw new Error(
+      "Nothing wired to you matches '" + ref + "'. Run peers to see agents (1, 2…) and models (M1…).",
+    );
+  }
+  throw new Error(
+    "'" + ref + "' is ambiguous. Use an agent number (1, 2…) or a model number (M1…) from peers.",
+  );
+}
+
+async function askModel(model, prompt, flags, label) {
+  const timeoutSec = parseInt(flags.timeout, 10) || 180;
+  return api(
+    "POST",
+    BASE + "/model",
+    { model: model.id, prompt, timeoutSec, label },
+    (timeoutSec + 30) * 1000,
+  );
+}
+
+function modelHeader(r) {
+  const usage = r.usage && r.usage.outputTokens ? ", " + r.usage.outputTokens + " tokens" : "";
+  return (
+    "[" + r.model.name + " · " + r.model.model + " · " + r.model.transport + " · " +
+    (r.latencyMs / 1000).toFixed(1) + "s" + usage + "]"
+  );
+}
+
+async function cmdAsk(rest, flags) {
+  const ref = rest.shift();
+  if (!ref) throw new Error("Usage: ask <agent|model> <text> | --file <path>");
+  const text = readTextArg(rest, flags);
+  const manifest = await api("GET", BASE);
+  const peer = classifyPeer(manifest, ref);
+  if (peer.kind === "model") {
+    const r = await askModel(peer.item, text, flags);
+    console.log(modelHeader(r));
+    console.log(truncate(r.text, MAX_PRINT_CHARS));
+    return 0;
+  }
+  const agent = await sendTo(peer.item.id, text);
+  return printWaitResult(await waitFor(agent.id, parseInt(flags.timeout, 10) || 100), ref);
+}
+
+async function cmdConsult(rest, flags) {
+  const ref = rest.shift();
+  if (!ref) throw new Error("Usage: consult <model> <text> | --file <path>");
+  const text = readTextArg(rest, flags);
+  const manifest = await api("GET", BASE);
+  const models = matchModels(manifest.models, ref);
+  if (models.length !== 1) {
+    throw new Error(
+      "No single wired model matches '" + ref + "'. Wired models: " +
+        (manifest.models.map((m, i) => "M" + (i + 1) + " " + m.name).join(", ") || "none"),
+    );
+  }
+  const r = await askModel(models[0], text, flags);
+  console.log(modelHeader(r));
+  console.log(truncate(r.text, MAX_PRINT_CHARS));
+}
+
+function pickList(all, spec, match) {
+  if (typeof spec !== "string") return all;
+  const picked = [];
+  for (const ref of spec.split(",").map((part) => part.trim()).filter(Boolean)) {
+    const found = match(all, ref);
+    if (found.length !== 1) throw new Error("'" + ref + "' does not name exactly one wired peer.");
+    if (!picked.includes(found[0])) picked.push(found[0]);
+  }
+  return picked;
+}
+
+/** Ask every wired model (and with --agents, every agent) the same question. */
+async function cmdCouncil(rest, flags) {
+  const question = readTextArg(rest, flags);
+  const manifest = await api("GET", BASE);
+  const models = flags.models === true ? manifest.models : pickList(manifest.models, flags.models, matchModels);
+  const agents =
+    flags.agents === undefined
+      ? []
+      : flags.agents === true
+        ? manifest.agents
+        : pickList(manifest.agents, flags.agents, matchAgents);
+  if (models.length + agents.length === 0) {
+    throw new Error("No models (or agents with --agents) are wired to you. Run peers.");
+  }
+  console.log(
+    "Council of " + [...models.map((m) => m.name), ...agents.map((a) => a.name)].join(", ") + "…",
+  );
+  const sent = [];
+  for (const agent of agents) sent.push(await sendTo(agent.id, question, { quiet: true }));
+  const modelRuns = models.map((model) =>
+    askModel(model, question, flags, "council").then(
+      (r) => modelHeader(r) + "\n" + truncate(r.text, MAX_PRINT_CHARS),
+      (error) => "[" + model.name + " failed] " + error.message,
+    ),
+  );
+  const agentRuns = sent.map((agent) =>
+    waitFor(agent.id, parseInt(flags.timeout, 10) || 180).then(
+      (result) =>
+        result.code === 0
+          ? "[" + result.name + "]\n" + truncate(result.reply || "(no reply text found)", MAX_PRINT_CHARS)
+          : "[" + result.name + "] " + (result.code === 3 ? "waits for the user's approval" : "still working - use wait " + result.id),
+      (error) => "[" + agent.name + " failed] " + error.message,
+    ),
+  );
+  const answers = await Promise.all([...modelRuns, ...agentRuns]);
+  console.log("");
+  console.log(answers.join("\n\n----------------------------------------\n\n"));
+}
+
+async function cmdBroadcast(rest, flags) {
+  const text = readTextArg(rest, flags);
+  const manifest = await api("GET", BASE);
+  if (manifest.agents.length === 0) throw new Error("No agents are wired to you.");
+  for (const agent of manifest.agents) {
+    try {
+      await sendTo(agent.id, text);
+    } catch (error) {
+      console.log("Could not send to " + agent.name + ": " + error.message);
+    }
+  }
+  console.log("Now run wait <agent> for each reply you need.");
 }
 
 async function cmdReply(rest) {
@@ -386,11 +564,14 @@ async function cmdTrigger(rest, flags) {
 
 const HELP = [
   "TermCanvas bridge (" + ROLE + ")",
-  "  status | peers                         what is wired to you",
-  "  send <agent> <text> | --file <path>    message an agent",
-  "  wait <agent> [--timeout 100]           wait for its reply",
-  "  ask <agent> <text> | --file <path>     send, then wait",
-  "  reply <agent>                          print its latest reply again",
+  "  status | peers                          what is wired to you",
+  "  ask <agent|model> <text> | --file <p>   message an agent and wait, or ask a model",
+  "  send <agent> <text> | --file <path>     message an agent without waiting",
+  "  wait <agent> [--timeout 100]            wait for its reply",
+  "  reply <agent>                           print its latest reply again",
+  "  consult <model> <text> | --file <path>  ask a wired AI model",
+  "  council <question> [--models M1,M2] [--agents [1,2]]   ask several at once, compare",
+  "  broadcast <text> | --file <path>        message every wired agent",
   "  source <S#|name> [--lines 200] [--query \"k=v\"]",
   "  trigger <S#|name> [--data '<json>' | --file payload.json]",
 ].join("\n");
@@ -406,10 +587,14 @@ async function main() {
       return cmdSend(positional, flags);
     case "wait":
       return cmdWait(positional, flags);
-    case "ask": {
-      const agent = await cmdSend(positional, flags);
-      return cmdWait([agent.id], flags);
-    }
+    case "ask":
+      return cmdAsk(positional, flags);
+    case "consult":
+      return cmdConsult(positional, flags);
+    case "council":
+      return cmdCouncil(positional, flags);
+    case "broadcast":
+      return cmdBroadcast(positional, flags);
     case "reply":
       return cmdReply(positional);
     case "source":

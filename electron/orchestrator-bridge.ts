@@ -144,12 +144,19 @@ Run from the repository root (absolute path: \`${scriptAbsPath.replace(/\\/g, "/
 
 \`\`\`
 ${cli} peers                              who is wired to you: agents (1, 2…), models (M1…), sources (S1…)
-${cli} ask <agent> <text>                 message an agent and wait for its reply
+${cli} ask <agent|model> <text>           message an agent and wait for its reply, or ask a model
 ${cli} send <agent> <text>                message an agent without waiting (then use wait)
 ${cli} wait <agent> [--timeout 100]       wait for the agent's reply and print it
 ${cli} reply <agent>                      print the agent's latest reply again
+${cli} consult <model> <text>             ask a wired AI model (Claude, Gemini, ChatGPT… over API or CLI)
+${cli} council <question> [--agents]      ask every wired model (and agent) the same question, compare
+${cli} broadcast <text>                   message every wired agent (then wait on each)
 ${cli} source <S#|name> / trigger <S#|name>   read / trigger a wired data source
 \`\`\`
+
+Put flags after the text (\`council "…" --agents\`), or write the text to a
+file and pass \`--file\`. Models answer in one shot and cannot see files:
+include the code or data they need in the message.
 
 \`<agent>\` is the number from \`peers\`, the agent's name, its type
 (e.g. \`gemini\`) when only one of that type is wired, or its id. For long or

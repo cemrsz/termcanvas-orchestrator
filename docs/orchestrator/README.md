@@ -49,6 +49,7 @@ ekler; aşağıdaki liste commit sırasıyla aynıdır.
 37. [Ekrandan cevap okuma](37-ekrandan-cevap.md) — Gemini CLI gibi kaydı olmayan agent'ların cevabı ekrandan
 38. [Ekran okuma köprüye bağlandı](38-ekran-baglantisi.md) — xterm ekran metni, son mesajdan sonrası cevap, awaitingApproval
 39. [wait: sessizlikle tur sonu](39-sessizlik-algilama.md) — tur bilgisi olmayan agent'larda 6 sn sessizlik = cevap hazır
+40. [Köprü CLI: modeller ve konsey](40-model-komutlari.md) — agent veya modele sor, aynı soruyu herkese sor, toplu mesaj
 
 ## Nasıl kullanılır
 
