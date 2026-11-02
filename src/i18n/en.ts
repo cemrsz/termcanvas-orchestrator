@@ -1103,6 +1103,10 @@ export const en = {
   "canvas.menu.template.councilHint": "orchestrator + Claude, Gemini, ChatGPT",
 
   // AI Hub
+  shortcut_toggle_ai_hub: "AI Hub",
+  "ai.hub.toolbar": (shortcut: string) => `AI Hub: keys, council, live feed (${shortcut})`,
+  "ai.hub.toolbarUnread": (count: number) =>
+    `${count} new message${count === 1 ? "" : "s"} between your AIs`,
   "ai.hub.title": "AI Hub",
   "ai.hub.subtitle":
     "Every AI the canvas can talk to: keys and CLIs, a council, and the live feed",

@@ -9,6 +9,9 @@ import { UpdateModal } from "../components/UpdateModal";
 import { useT } from "../i18n/useT";
 import { getWorkspaceBaseName } from "../titleHelper";
 import { formatShortcut, useShortcutStore } from "../stores/shortcutStore";
+import { useAiHubStore } from "../stores/aiHubStore";
+import { useCommsStore } from "../stores/commsStore";
+import { Sparkles } from "lucide-react";
 
 export { TOOLBAR_HEIGHT } from "./toolbarHeight";
 
@@ -45,6 +48,13 @@ export function Toolbar() {
   const hubShortcut = useShortcutStore((s) => s.shortcuts.toggleHub);
   const hubChord = formatShortcut(hubShortcut, isMac);
   const hubLabel = t["hub.toolbarLabel"](hubChord);
+  const aiHubOpen = useAiHubStore((s) => s.open);
+  const toggleAiHub = useAiHubStore((s) => s.toggleHub);
+  const aiUnread = useCommsStore((s) => s.unread);
+  const aiHubShortcut = useShortcutStore((s) => s.shortcuts.toggleAiHub);
+  const aiHubLabel =
+    t["ai.hub.toolbar"](formatShortcut(aiHubShortcut, isMac)) +
+    (aiUnread > 0 ? ` · ${t["ai.hub.toolbarUnread"](aiUnread)}` : "");
 
   const workspaceName =
     getWorkspaceBaseName(workspacePath) ?? t.toolbar_untitled_workspace;
@@ -94,6 +104,31 @@ export function Toolbar() {
               onClick={() => setShowUpdate(true)}
             />
           )}
+
+          <button
+            type="button"
+            className={`${iconButtonClass} relative`}
+            style={{
+              ...ICON_BUTTON_TRANSITION,
+              color: aiHubOpen ? "var(--text-primary)" : undefined,
+              backgroundColor: aiHubOpen ? "var(--surface-hover)" : undefined,
+            }}
+            onClick={toggleAiHub}
+            title={aiHubLabel}
+            aria-label={aiHubLabel}
+            aria-pressed={aiHubOpen}
+          >
+            <Sparkles size={15} strokeWidth={1.7} aria-hidden="true" />
+            {aiUnread > 0 && (
+              <span
+                aria-hidden="true"
+                className="tc-enter-pop absolute -top-0.5 -right-0.5 flex h-3.5 min-w-3.5 items-center justify-center rounded-full px-1 text-[9px] font-semibold leading-none ring-2 ring-[var(--bg)] motion-reduce:animate-none"
+                style={{ background: "var(--accent)", color: "var(--accent-foreground)" }}
+              >
+                {aiUnread > 9 ? "9+" : aiUnread}
+              </span>
+            )}
+          </button>
 
           <button
             type="button"

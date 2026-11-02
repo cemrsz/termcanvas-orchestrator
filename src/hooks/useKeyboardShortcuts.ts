@@ -68,6 +68,7 @@ import { useStatusDigestStore } from "../stores/statusDigestStore";
 import { useHubStore } from "../stores/hubStore";
 import { useCanvasRegistryStore } from "../stores/canvasRegistryStore";
 import { useCanvasManagerStore } from "../stores/canvasManagerStore";
+import { useAiHubStore } from "../stores/aiHubStore";
 
 function getAllTerminals() {
   const { projects } = useProjectStore.getState();
@@ -397,6 +398,11 @@ export function useKeyboardShortcuts() {
       if (matchesShortcut(e, shortcuts.openCanvasManager)) {
         consumeShortcut();
         useCanvasManagerStore.getState().openManager();
+        return;
+      }
+      if (matchesShortcut(e, shortcuts.toggleAiHub)) {
+        consumeShortcut();
+        useAiHubStore.getState().toggleHub();
         return;
       }
 
