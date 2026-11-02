@@ -60,6 +60,7 @@ ekler; aşağıdaki liste commit sırasıyla aynıdır.
 48. [Canvas: agent portları](48-agent-portlari.md) — portlar artık her agent'ta, agent rengiyle
 49. [Canvas: kablo çekme kuralları](49-baglanti-kurallari.md) — gevşek bağlantı modu, resolveWireIntent, pipeline'da otomatik bilgilendirme
 50. [Canvas: pipeline kablosu](50-pipeline-kablosu.md) — iki agent renginde geçiş, ⇄/× etiketi, meşgulken akan çizgi
+51. [Canvas: kablo nabzı](51-kablo-nabzi.md) — gönderenden alıcıya akan parlak nokta; hareketi azalt ayarına uyar
 
 ## Nasıl kullanılır
 

@@ -53,6 +53,9 @@ test("an ask marks the model busy until its answer arrives", () => {
 test("messages between canvas nodes light their wire; user calls do not", () => {
   const state = applyCommsEntry(EMPTY_COMMS_STATE, entry({}), 5000);
   assert.equal(state.pulses[commsWireKey("t1", "m1")], 5000 + COMMS_PULSE_MS);
+  assert.equal(state.pulseFrom[commsWireKey("m1", "t1")], "t1", "pulse knows its sender");
+  const back = applyCommsEntry(state, entry({ kind: "answer", from: gemini, to: claude }), 5100);
+  assert.equal(back.pulseFrom[commsWireKey("t1", "m1")], "m1");
   const hub = applyCommsEntry(
     EMPTY_COMMS_STATE,
     entry({ kind: "ask", from: USER_PARTY, correlationId: "h1" }),

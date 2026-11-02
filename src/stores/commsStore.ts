@@ -12,6 +12,8 @@ export interface CommsState {
   entries: CommsEntry[];
   /** Wire key → time the glow ends. */
   pulses: Record<string, number>;
+  /** Wire key → node the last message on it came from (pulse direction). */
+  pulseFrom: Record<string, string>;
   /** Model node id → calls in flight (the node shows it is thinking). */
   pending: Record<string, number>;
   /** Correlation ids of asks that have not been answered yet. */
@@ -23,6 +25,7 @@ export interface CommsState {
 export const EMPTY_COMMS_STATE: CommsState = {
   entries: [],
   pulses: {},
+  pulseFrom: {},
   pending: {},
   openAsks: {},
   unread: 0,
@@ -62,16 +65,17 @@ export function applyCommsEntry(
   }
 
   let pulses = state.pulses;
+  let pulseFrom = state.pulseFrom;
   if (entry.from.kind !== "user" && entry.to.kind !== "user") {
-    pulses = {
-      ...pulses,
-      [commsWireKey(entry.from.id, entry.to.id)]: now + COMMS_PULSE_MS,
-    };
+    const key = commsWireKey(entry.from.id, entry.to.id);
+    pulses = { ...pulses, [key]: now + COMMS_PULSE_MS };
+    pulseFrom = { ...pulseFrom, [key]: entry.from.id };
   }
 
   return {
     entries,
     pulses,
+    pulseFrom,
     pending,
     openAsks,
     unread: state.unread + (options.countUnread === false ? 0 : 1),
@@ -134,7 +138,7 @@ export const useCommsStore = create<CommsStore>((set, get) => ({
     for (const entry of entries) {
       state = applyCommsEntry(state, entry, 0, { countUnread: false });
     }
-    set({ ...state, pulses: {} });
+    set({ ...state, pulses: {}, pulseFrom: {} });
   },
 
   markRead: () => set({ unread: 0 }),
@@ -174,4 +178,12 @@ export function startCommsSync(): () => void {
  */
 export function useWirePulse(a: string, b: string): boolean {
   return useCommsStore((state) => commsWireKey(a, b) in state.pulses);
+}
+
+/** The node a message is travelling from on this wire, or null. */
+export function useWirePulseFrom(a: string, b: string): string | null {
+  return useCommsStore((state) => {
+    const key = commsWireKey(a, b);
+    return key in state.pulses ? (state.pulseFrom[key] ?? a) : null;
+  });
 }

@@ -585,6 +585,17 @@ a.tc-kbd:active {
     stroke-dashoffset: -12;
   }
 }
+.tc-xyflow .tc-wire-pulse {
+  filter: drop-shadow(0 0 4px currentColor) drop-shadow(0 0 2px #fff8);
+}
+@media (prefers-reduced-motion: reduce) {
+  .tc-xyflow .tc-wire-pulse {
+    display: none;
+  }
+  .tc-xyflow .tc-orchestration-edge-busy {
+    animation: none;
+  }
+}
 .tc-xyflow .react-flow__handle.connectingto,
 .tc-xyflow .react-flow__handle.valid {
   transform: scale(1.35);

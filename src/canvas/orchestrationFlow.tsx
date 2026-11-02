@@ -21,6 +21,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { useOrchestrationStore } from "../stores/orchestrationStore";
+import { useWirePulseFrom } from "../stores/commsStore";
 import type {
   OrchestrationLink,
   OrchestrationPipe,
@@ -377,6 +378,33 @@ function SourceNode({ data }: NodeProps<SourceFlowNode>) {
   );
 }
 
+/**
+ * A glowing dot travelling along a wire while a message crosses it, from
+ * the sender's end to the receiver's.
+ */
+function WirePulse({
+  path,
+  color,
+  reverse,
+}: {
+  path: string;
+  color: string;
+  reverse: boolean;
+}) {
+  return (
+    <circle r={4} fill={color} className="tc-wire-pulse" pointerEvents="none">
+      <animateMotion
+        dur="1.1s"
+        repeatCount="indefinite"
+        path={path}
+        keyPoints={reverse ? "1;0" : "0;1"}
+        keyTimes="0;1"
+        calcMode="linear"
+      />
+    </circle>
+  );
+}
+
 export interface OrchestrationEdgeData {
   linkId: string;
   color: string;
@@ -388,6 +416,8 @@ export type OrchestrationFlowEdge = Edge<OrchestrationEdgeData, "orchestration">
 
 function OrchestrationEdge({
   id,
+  source,
+  target,
   sourceX,
   sourceY,
   targetX,
@@ -407,6 +437,7 @@ function OrchestrationEdge({
     targetPosition,
   });
   const color = data?.color ?? "var(--accent)";
+  const pulseFrom = useWirePulseFrom(source, target);
 
   return (
     <>
@@ -416,11 +447,14 @@ function OrchestrationEdge({
         className={data?.busy ? "tc-orchestration-edge-busy" : undefined}
         style={{
           stroke: color,
-          strokeWidth: hovered ? 3 : 2,
-          opacity: hovered ? 1 : 0.8,
+          strokeWidth: hovered || pulseFrom ? 3 : 2,
+          opacity: hovered || pulseFrom ? 1 : 0.8,
         }}
         interactionWidth={18}
       />
+      {pulseFrom && (
+        <WirePulse path={path} color={color} reverse={pulseFrom === target} />
+      )}
       {/* Invisible wide path to drive hover without blocking the canvas. */}
       <path
         d={path}
@@ -517,6 +551,8 @@ export type PipeFlowEdge = Edge<PipeEdgeData, "pipe">;
  */
 function PipeEdge({
   id,
+  source,
+  target,
   sourceX,
   sourceY,
   targetX,
@@ -538,6 +574,7 @@ function PipeEdge({
   const gradientId = `tc-pipe-gradient-${id}`;
   const sourceColor = data?.sourceColor ?? "var(--accent)";
   const targetColor = data?.targetColor ?? "var(--accent)";
+  const pulseFrom = useWirePulseFrom(source, target);
 
   return (
     <>
@@ -560,11 +597,18 @@ function PipeEdge({
         className={data?.busy ? "tc-orchestration-edge-busy" : undefined}
         style={{
           stroke: `url(#${gradientId})`,
-          strokeWidth: hovered ? 3.5 : 2.5,
-          opacity: hovered ? 1 : 0.85,
+          strokeWidth: hovered || pulseFrom ? 3.5 : 2.5,
+          opacity: hovered || pulseFrom ? 1 : 0.85,
         }}
         interactionWidth={18}
       />
+      {pulseFrom && (
+        <WirePulse
+          path={path}
+          color={pulseFrom === target ? targetColor : sourceColor}
+          reverse={pulseFrom === target}
+        />
+      )}
       <path
         d={path}
         fill="none"
