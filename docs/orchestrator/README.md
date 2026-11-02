@@ -34,6 +34,7 @@ ekler; aşağıdaki liste commit sırasıyla aynıdır.
 22. [IPC: ai kanalları](22-baglayici-ipc.md) — durum, anahtar, model listesi ve invoke için window.termcanvas.ai
 23. [Haberleşme kaydı](23-haberlesme-kaydi.md) — AI'lar arası her mesaj için tip ve 400 kayıtlık tampon
 24. [Haberleşme akışı: IPC](24-haberlesme-ipc.md) — comms:entry yayını, list/clear ve AI Hub çağrılarının kaydı
+25. [Haberleşme akışı: store](25-haberlesme-store.md) — kablo nabzı, meşgul model sayacı ve okunmamış rozeti
 
 ## Nasıl kullanılır
 

@@ -58,6 +58,7 @@ import {
 import { logSlowRendererPath } from "./utils/devPerf";
 import { selectAllTerminalRuntime } from "./terminal/terminalRuntimeStore";
 import { performContextualSelectAll } from "./utils/contextualSelectAll";
+import { startCommsSync } from "./stores/commsStore";
 
 function isSkipRestoreSnapshot(
   snapshot: ReturnType<typeof readWorkspaceSnapshot>,
@@ -288,6 +289,7 @@ export function App() {
     if (!window.termcanvas?.sessions) return;
     return initSessionStoreIPC();
   }, []);
+  useEffect(() => startCommsSync(), []);
 
   useEffect(() => {
     if (!window.termcanvas?.menu) return;
