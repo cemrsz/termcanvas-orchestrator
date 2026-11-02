@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useId } from "react";
+import { useCallback, useEffect, useId, useState } from "react";
 import type { NodeProps } from "@xyflow/react";
-import { Sparkles, X } from "lucide-react";
+import { LoaderCircle, Play, Sparkles, X } from "lucide-react";
 import {
   getAiConnector,
   sortedAiConnectors,
@@ -11,9 +11,12 @@ import { useT } from "../i18n/useT";
 import { useOrchestrationStore, pipeOtherEnd } from "../stores/orchestrationStore";
 import { useProjectStore } from "../stores/projectStore";
 import {
+  invokeFromUi,
   modelSuggestions,
   useAiConnectorStore,
 } from "../stores/aiConnectorStore";
+import { useCommsStore } from "../stores/commsStore";
+import type { CommsEntry } from "../../shared/comms";
 import { OrchestrationInPort, type SourceFlowNode } from "./orchestrationFlow";
 
 type Translate = ReturnType<typeof useT>;
@@ -98,6 +101,27 @@ export function AiNode({ data }: NodeProps<SourceFlowNode>) {
   );
   const ensureLoaded = useAiConnectorStore((state) => state.ensureLoaded);
   const checkCli = useAiConnectorStore((state) => state.checkCli);
+  const pending = useCommsStore(
+    useCallback((state) => state.pending[data.sourceId] ?? 0, [data.sourceId]),
+  );
+  const lastAnswer = useCommsStore(
+    useCallback(
+      (state): CommsEntry | null => {
+        for (let i = state.entries.length - 1; i >= 0; i--) {
+          const entry = state.entries[i];
+          if (
+            entry.from.id === data.sourceId &&
+            (entry.kind === "answer" || entry.kind === "error")
+          ) {
+            return entry;
+          }
+        }
+        return null;
+      },
+      [data.sourceId],
+    ),
+  );
+  const [testing, setTesting] = useState(false);
 
   useEffect(() => {
     ensureLoaded();
@@ -117,14 +141,43 @@ export function AiNode({ data }: NodeProps<SourceFlowNode>) {
   const color = plugin.color;
   const ready = readiness(t, source.ai.transport, status, !!plugin.local);
   const stop = (event: React.SyntheticEvent) => event.stopPropagation();
+  const thinking = pending > 0 || testing;
+
+  const runTest = async () => {
+    if (!source.ai || testing) return;
+    setTesting(true);
+    try {
+      await invokeFromUi({
+        connector: source.ai.connector,
+        transport: source.ai.transport,
+        model: source.ai.model,
+        baseURL: source.url || undefined,
+        system: source.description.trim() || undefined,
+        prompt: t["ai.node.testPrompt"],
+        feedAs: {
+          kind: "model",
+          id: source.id,
+          name: source.name || plugin.name,
+          type: plugin.id,
+        },
+        label: "test",
+      });
+    } finally {
+      setTesting(false);
+    }
+  };
 
   return (
     <div
       data-scene-box-select-block
-      className="flex flex-col overflow-visible rounded-lg border bg-[var(--surface)]"
+      className={`flex flex-col overflow-visible rounded-lg border bg-[var(--surface)] ${thinking ? "tc-ai-node-thinking" : ""}`}
       style={{
         borderColor: `color-mix(in srgb, ${color} 60%, var(--border))`,
-        boxShadow: "var(--shadow-elev-1)",
+        boxShadow: thinking
+          ? `0 0 0 1px ${color}, 0 0 22px color-mix(in srgb, ${color} 45%, transparent)`
+          : "var(--shadow-elev-1)",
+        // Read by the thinking glow animation.
+        ["--tc-ai-color" as string]: color,
       }}
     >
       <OrchestrationInPort color={color} />
@@ -283,10 +336,50 @@ export function AiNode({ data }: NodeProps<SourceFlowNode>) {
           onChange={(e) => updateSource(source.id, { description: e.target.value })}
         />
 
+        {lastAnswer && !thinking && (
+          <div
+            className="tc-caption line-clamp-2 rounded border-l-2 px-2 py-1"
+            style={{
+              borderColor: lastAnswer.kind === "error" ? "var(--red)" : color,
+              background: `color-mix(in srgb, ${lastAnswer.kind === "error" ? "var(--red)" : color} 7%, transparent)`,
+              color: lastAnswer.kind === "error" ? "var(--red)" : "var(--text-secondary)",
+            }}
+            title={`${lastAnswer.kind === "error" ? t["ai.node.lastError"] : t["ai.node.lastAnswer"]}: ${lastAnswer.text}`}
+          >
+            {lastAnswer.text}
+            {lastAnswer.meta?.latencyMs !== undefined && (
+              <span style={{ color: "var(--text-faint)" }}>
+                {" · "}
+                {(lastAnswer.meta.latencyMs / 1000).toFixed(1)}s
+                {lastAnswer.meta.outputTokens ? ` · ${lastAnswer.meta.outputTokens} tok` : ""}
+              </span>
+            )}
+          </div>
+        )}
+
         <div className="tc-caption flex items-center gap-1.5 text-[var(--text-faint)]">
+          <button
+            type="button"
+            className="nodrag flex shrink-0 items-center gap-1 rounded border border-[var(--border)] px-1.5 py-0.5 hover:border-[var(--border-hover)] disabled:cursor-wait disabled:opacity-60"
+            style={{ color: "var(--text-secondary)" }}
+            title={t["ai.node.testTitle"]}
+            disabled={testing}
+            onMouseDown={stop}
+            onClick={(e) => {
+              e.stopPropagation();
+              void runTest();
+            }}
+          >
+            {thinking ? (
+              <LoaderCircle size={10} className="animate-spin" aria-hidden="true" />
+            ) : (
+              <Play size={10} aria-hidden="true" />
+            )}
+            {thinking ? t["ai.node.thinking"] : t["ai.node.test"]}
+          </button>
           <span
             aria-hidden="true"
-            className="inline-block h-1.5 w-1.5 rounded-full"
+            className="inline-block h-1.5 w-1.5 shrink-0 rounded-full"
             style={{ background: wiredIds ? color : "var(--border-hover)" }}
           />
           <span className="truncate">

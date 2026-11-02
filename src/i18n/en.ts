@@ -1053,6 +1053,13 @@ export const en = {
   "ai.node.cliDefault": "CLI's default model",
   "ai.node.notWired": "Not wired: drag from an agent's port to here",
   "ai.node.remove": "Remove AI node",
+  "ai.node.test": "Test",
+  "ai.node.testTitle": "Send a short test question with this node's settings",
+  "ai.node.testPrompt":
+    "Reply in one short sentence: who are you, and which model are you running on?",
+  "ai.node.thinking": "thinking…",
+  "ai.node.lastAnswer": "Last answer",
+  "ai.node.lastError": "Last error",
 } as const;
 
 export type TranslationKey = keyof typeof en;
