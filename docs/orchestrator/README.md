@@ -78,6 +78,7 @@ ekler; aşağıdaki liste commit sırasıyla aynıdır.
 66. [AI Hub: düğme ve kısayol](66-hub-dugmesi.md) — ✦ düğmesi, okunmamış sayacı, değiştirilebilir kısayol
 67. [Komut paleti: AI](67-komut-paleti.md) — Hub/konsey/akış, üçlü ve konsey şablonları, her sağlayıcı için ekle
 68. [Çeviri: Çince](68-cince-ceviri.md) — AI düğümü, menüler, Hub ve akış metinleri Çince
+69. [Türkçe arayüz dili](69-turkce-dil.md) — Ayarlar'da Türkçe; AI Merkezi, menüler ve düğümler Türkçe
 
 ## Nasıl kullanılır
 

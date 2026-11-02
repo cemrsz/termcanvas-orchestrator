@@ -1,9 +1,7 @@
 import type { Terminal } from "@xterm/xterm";
+import { getDictionary } from "../i18n/useT";
 import { WebglAddon } from "@xterm/addon-webgl";
 import { useNotificationStore } from "../stores/notificationStore";
-import { useLocaleStore } from "../stores/localeStore";
-import { en } from "../i18n/en";
-import { zh } from "../i18n/zh";
 import { recordRenderDiagnostic } from "./renderDiagnostics";
 
 interface PoolEntry {
@@ -19,7 +17,6 @@ const WEBGL_UNAVAILABLE_NOTICE_KEY = "tc:webgl-unavailable-notice-at";
 const WEBGL_CONTEXT_LOST_NOTICE_KEY = "tc:webgl-context-lost-notice-at";
 const entries = new Map<string, PoolEntry>();
 let focusedId: string | null = null;
-const dictionaries = { en, zh } as const;
 
 function getPoolDiagnosticData(): Record<string, unknown> {
   return {
@@ -50,8 +47,7 @@ function formatError(error: unknown): string {
 }
 
 function getT() {
-  const locale = useLocaleStore.getState().locale;
-  return { ...en, ...dictionaries[locale] };
+  return getDictionary();
 }
 
 function shouldNotifyWebGLIssue(storageKey: string): boolean {

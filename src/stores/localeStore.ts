@@ -1,6 +1,6 @@
 import { create } from "zustand";
 
-export type Locale = "en" | "zh";
+export type Locale = "en" | "zh" | "tr";
 
 function getLocalStorage():
   | Pick<Storage, "getItem" | "setItem">
@@ -22,9 +22,11 @@ function getLocalStorage():
 
 function detectLocale(): Locale {
   const saved = getLocalStorage()?.getItem("termcanvas-locale") ?? null;
-  if (saved === "en" || saved === "zh") return saved;
-  if (typeof navigator !== "undefined" && navigator.language.startsWith("zh"))
-    return "zh";
+  if (saved === "en" || saved === "zh" || saved === "tr") return saved;
+  if (typeof navigator !== "undefined") {
+    if (navigator.language.startsWith("zh")) return "zh";
+    if (navigator.language.startsWith("tr")) return "tr";
+  }
   return "en";
 }
 

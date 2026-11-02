@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { getDictionary } from "../i18n/useT";
 import * as xtermModule from "@xterm/xterm";
 import type { Terminal as XtermTerminal, ILink, ILinkProvider } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
@@ -46,10 +47,7 @@ import { useThemeStore, XTERM_THEMES } from "../stores/themeStore";
 import type { TerminalData, TerminalStatus, TerminalType } from "../types";
 import { getTerminalLaunchOptions, getTerminalPromptArgs } from "./cliConfig";
 import { buildFontFamily } from "./fontRegistry";
-import { useLocaleStore } from "../stores/localeStore";
 import { isRegisteredAppShortcutEvent } from "../stores/shortcutStore";
-import { en } from "../i18n/en";
-import { zh } from "../i18n/zh";
 import type { TerminalTelemetrySnapshot } from "../../shared/telemetry";
 import {
   CLI_DETECTION_MAX_ATTEMPTS,
@@ -165,7 +163,6 @@ type XtermRuntimeModule = typeof xtermModule & {
   default?: { Terminal?: XtermTerminalConstructor };
 };
 
-const dictionaries = { en, zh } as const;
 const SPAWN_STAGGER_MS = 150;
 const TERMINAL_PARKING_ROOT_ID = "tc-terminal-runtime-parking-root";
 
@@ -200,8 +197,7 @@ export const useTerminalRuntimeStore = create<TerminalRuntimeStoreState>(
 );
 
 function getT() {
-  const locale = useLocaleStore.getState().locale;
-  return { ...en, ...dictionaries[locale] };
+  return getDictionary();
 }
 
 function updateRuntimeSnapshot(

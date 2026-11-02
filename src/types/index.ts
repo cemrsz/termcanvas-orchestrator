@@ -1067,7 +1067,7 @@ export interface TermCanvasAPI {
       sessionType: "claude" | "codex";
       cwd: string;
       summaryCli: "claude" | "codex";
-      locale: "en" | "zh";
+      locale: "en" | "zh" | "tr";
     }) => Promise<{
       ok: boolean;
       summary?: string;
