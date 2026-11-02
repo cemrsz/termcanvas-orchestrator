@@ -1,13 +1,32 @@
-import { useEffect, useRef, useState } from "react";
-import { ExternalLink, KeyRound, ShieldAlert, Trash2 } from "lucide-react";
+import { useEffect, useId, useRef, useState } from "react";
+import {
+  ExternalLink,
+  KeyRound,
+  List,
+  LoaderCircle,
+  Play,
+  Plus,
+  RefreshCw,
+  ShieldAlert,
+  Trash2,
+} from "lucide-react";
 import {
   sortedAiConnectors,
   type AiConnectorPlugin,
   type AiConnectorStatus,
 } from "../../../shared/ai-connectors";
 import { useT } from "../../i18n/useT";
-import { useAiConnectorStore } from "../../stores/aiConnectorStore";
+import {
+  invokeFromUi,
+  modelSuggestions,
+  useAiConnectorStore,
+} from "../../stores/aiConnectorStore";
 import { useAiHubStore } from "../../stores/aiHubStore";
+import {
+  addAiNodeInScene,
+  visibleCanvasCenter,
+} from "../../actions/orchestrationSceneActions";
+import type { AiTransport } from "../../../shared/ai-connectors";
 
 type Translate = ReturnType<typeof useT>;
 
@@ -169,7 +188,7 @@ export function ConnectorCard({
       </header>
 
       <div className="flex items-center gap-2">
-        <span className="tc-eyebrow w-8 shrink-0">API</span>
+        <span className="tc-eyebrow w-12 shrink-0">API</span>
         <StatusDot ok={api.ok} />
         <span
           className="tc-meta truncate"
@@ -194,6 +213,236 @@ export function ConnectorCard({
   );
 }
 
+const smallButton =
+  "tc-meta inline-flex items-center gap-1 rounded border border-[var(--border)] px-2 py-1 text-[var(--text-secondary)] hover:border-[var(--border-hover)] hover:text-[var(--text-primary)] disabled:cursor-not-allowed disabled:opacity-40";
+
+/** A text field that saves on Enter or when it loses focus. */
+function SavingInput({
+  value,
+  placeholder,
+  list,
+  label,
+  onSave,
+}: {
+  value: string;
+  placeholder: string;
+  list?: string;
+  label: string;
+  onSave: (next: string) => void;
+}) {
+  const [draft, setDraft] = useState(value);
+  useEffect(() => setDraft(value), [value]);
+  const commit = () => {
+    if (draft.trim() !== value.trim()) onSave(draft.trim());
+  };
+  return (
+    <input
+      className="tc-meta tc-mono min-w-0 flex-1 rounded border border-[var(--border)] bg-[var(--bg)] px-2 py-1 text-[var(--text-primary)] outline-none focus:border-[var(--text-secondary)]"
+      value={draft}
+      list={list}
+      spellCheck={false}
+      placeholder={placeholder}
+      aria-label={label}
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") commit();
+      }}
+    />
+  );
+}
+
+/** CLI, server URL, default model, test and add-to-canvas for one connector. */
+function ConnectorDetails({ plugin }: { plugin: AiConnectorPlugin }) {
+  const t = useT();
+  const datalistId = useId();
+  const status = useAiConnectorStore((state) => state.statuses[plugin.id]);
+  const fetched = useAiConnectorStore((state) => state.models[plugin.id]);
+  const checking = useAiConnectorStore((state) => !!state.checkingCli[plugin.id]);
+  const checkCli = useAiConnectorStore((state) => state.checkCli);
+  const setConfig = useAiConnectorStore((state) => state.setConfig);
+  const fetchModels = useAiConnectorStore((state) => state.fetchModels);
+  const closeHub = useAiHubStore((state) => state.closeHub);
+  const [modelNote, setModelNote] = useState<{ ok: boolean; text: string } | null>(null);
+  const [fetching, setFetching] = useState(false);
+  const [testing, setTesting] = useState<AiTransport | null>(null);
+  const [result, setResult] = useState<{ ok: boolean; text: string } | null>(null);
+
+  useEffect(() => {
+    if (plugin.cli && status && !status.cli) void checkCli(plugin.id);
+  }, [plugin, status, checkCli]);
+
+  const cli = status?.cli ?? null;
+  const showServer = plugin.local || plugin.id === "custom";
+
+  const test = async (transport: AiTransport) => {
+    setTesting(transport);
+    setResult(null);
+    try {
+      const outcome = await invokeFromUi({
+        connector: plugin.id,
+        transport,
+        prompt: t["ai.node.testPrompt"],
+        feedAs: { kind: "model", id: `hub-${plugin.id}`, name: plugin.name, type: plugin.id },
+        label: "test",
+      });
+      setResult(
+        outcome.ok
+          ? {
+              ok: true,
+              text: `${outcome.text} · ${(outcome.latencyMs / 1000).toFixed(1)}s · ${outcome.model}`,
+            }
+          : { ok: false, text: outcome.error },
+      );
+    } finally {
+      setTesting(null);
+    }
+  };
+
+  return (
+    <>
+      {plugin.cli && (
+        <div className="flex items-center gap-2">
+          <span className="tc-eyebrow w-12 shrink-0">CLI</span>
+          <StatusDot ok={cli ? cli.installed : null} />
+          <span className="tc-meta min-w-0 flex-1 truncate" title={cli?.path ?? undefined}>
+            {checking
+              ? t["ai.hub.cliChecking"]
+              : !cli
+                ? t["ai.hub.cliUnknown"]
+                : cli.installed
+                  ? t["ai.hub.cliReady"](plugin.cli.label, cli.version ?? "")
+                  : t["ai.hub.cliMissing"](plugin.cli.install)}
+          </span>
+          <button
+            type="button"
+            className={smallButton}
+            disabled={checking}
+            title={t["ai.hub.cliCheck"]}
+            aria-label={t["ai.hub.cliCheck"]}
+            onClick={() => void checkCli(plugin.id)}
+          >
+            <RefreshCw size={11} className={checking ? "animate-spin" : undefined} />
+          </button>
+        </div>
+      )}
+
+      {showServer && (
+        <div className="flex items-center gap-2">
+          <span className="tc-eyebrow w-12 shrink-0">URL</span>
+          <SavingInput
+            value={status?.baseURLOverride ?? ""}
+            placeholder={plugin.baseURL || "http://localhost:8000/v1"}
+            label={t["ai.hub.serverUrl"]}
+            onSave={(next) => void setConfig(plugin.id, { baseURL: next || null })}
+          />
+        </div>
+      )}
+
+      <div className="flex items-center gap-2">
+        <span className="tc-eyebrow w-12 shrink-0">{t["ai.node.model"]}</span>
+        <SavingInput
+          value={status?.modelOverride ?? ""}
+          placeholder={plugin.defaultModel || t["ai.hub.serverDefault"]}
+          list={datalistId}
+          label={t["ai.hub.defaultModel"]}
+          onSave={(next) => void setConfig(plugin.id, { model: next || null })}
+        />
+        <datalist id={datalistId}>
+          {modelSuggestions(plugin.id, fetched).map((model) => (
+            <option key={model} value={model} />
+          ))}
+        </datalist>
+        <button
+          type="button"
+          className={smallButton}
+          disabled={fetching || status?.apiReady === false}
+          title={t["ai.hub.fetchModels"]}
+          aria-label={t["ai.hub.fetchModels"]}
+          onClick={async () => {
+            setFetching(true);
+            try {
+              const outcome = await fetchModels(plugin.id);
+              setModelNote(
+                outcome.ok
+                  ? { ok: true, text: t["ai.hub.modelsFound"](outcome.models.length) }
+                  : { ok: false, text: outcome.error },
+              );
+            } finally {
+              setFetching(false);
+            }
+          }}
+        >
+          {fetching ? <LoaderCircle size={11} className="animate-spin" /> : <List size={11} />}
+        </button>
+      </div>
+      {modelNote && (
+        <p
+          className="tc-caption"
+          style={{ color: modelNote.ok ? "var(--text-muted)" : "var(--red)" }}
+        >
+          {modelNote.text}
+        </p>
+      )}
+
+      <div className="mt-auto flex flex-wrap items-center gap-1.5 pt-1">
+        <button
+          type="button"
+          className={smallButton}
+          disabled={testing !== null || status?.apiReady === false}
+          onClick={() => void test("api")}
+        >
+          {testing === "api" ? (
+            <LoaderCircle size={11} className="animate-spin" />
+          ) : (
+            <Play size={11} />
+          )}
+          {t["ai.hub.testApi"]}
+        </button>
+        {plugin.cli && (
+          <button
+            type="button"
+            className={smallButton}
+            disabled={testing !== null || cli?.installed === false}
+            onClick={() => void test("cli")}
+          >
+            {testing === "cli" ? (
+              <LoaderCircle size={11} className="animate-spin" />
+            ) : (
+              <Play size={11} />
+            )}
+            {t["ai.hub.testCli"]}
+          </button>
+        )}
+        <button
+          type="button"
+          className={`${smallButton} ml-auto`}
+          style={{ borderColor: `color-mix(in srgb, ${plugin.color} 55%, var(--border))` }}
+          onClick={() => {
+            addAiNodeInScene(plugin.id, visibleCanvasCenter());
+            closeHub();
+          }}
+        >
+          <Plus size={11} />
+          {t["ai.hub.addToCanvas"]}
+        </button>
+      </div>
+      {result && (
+        <p
+          className="tc-caption line-clamp-3 rounded border-l-2 px-2 py-1"
+          style={{
+            borderColor: result.ok ? plugin.color : "var(--red)",
+            color: result.ok ? "var(--text-secondary)" : "var(--red)",
+          }}
+          title={result.text}
+        >
+          {result.text}
+        </p>
+      )}
+    </>
+  );
+}
+
 export function ConnectorsTab() {
   const t = useT();
   const focusConnector = useAiHubStore((state) => state.focusConnector);
@@ -210,7 +459,9 @@ export function ConnectorsTab() {
             key={plugin.id}
             plugin={plugin}
             highlighted={focusConnector === plugin.id}
-          />
+          >
+            <ConnectorDetails plugin={plugin} />
+          </ConnectorCard>
         ))}
       </div>
       <h3 className="tc-eyebrow">{t["ai.hub.moreProviders"]}</h3>
@@ -220,7 +471,9 @@ export function ConnectorsTab() {
             key={plugin.id}
             plugin={plugin}
             highlighted={focusConnector === plugin.id}
-          />
+          >
+            <ConnectorDetails plugin={plugin} />
+          </ConnectorCard>
         ))}
       </div>
     </div>

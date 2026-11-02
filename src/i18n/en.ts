@@ -1118,6 +1118,21 @@ export const en = {
   "ai.hub.apiKeyFor": (name: string) => `${name} API key`,
   "ai.hub.removeKey": "Remove saved key",
   "ai.hub.getKey": "Get a key",
+  "ai.hub.cliChecking": "checking…",
+  "ai.hub.cliUnknown": "not checked yet",
+  "ai.hub.cliReady": (label: string, version: string) =>
+    `${label}${version ? ` · ${version}` : ""}`,
+  "ai.hub.cliMissing": (install: string) => `not installed: ${install}`,
+  "ai.hub.cliCheck": "Check the CLI again",
+  "ai.hub.serverUrl": "Server URL",
+  "ai.hub.serverDefault": "server default",
+  "ai.hub.defaultModel": "Default model",
+  "ai.hub.fetchModels": "Fetch the provider's model list",
+  "ai.hub.modelsFound": (count: number) =>
+    `${count} model${count === 1 ? "" : "s"} available: pick one in the field above`,
+  "ai.hub.testApi": "Test API",
+  "ai.hub.testCli": "Test CLI",
+  "ai.hub.addToCanvas": "Add to canvas",
   "ai.hub.insecure":
     "This system has no keyring, so the key is stored unencrypted in a file only your user can read.",
 } as const;

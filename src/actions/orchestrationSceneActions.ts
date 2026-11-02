@@ -1,6 +1,7 @@
 import { createTerminal, useProjectStore } from "../stores/projectStore";
 import {
   AI_NODE_HEIGHT,
+  AI_NODE_WIDTH,
   isAgentTerminalType,
   pipePeers,
   useOrchestrationStore,
@@ -12,6 +13,9 @@ import {
   type AiTransport,
 } from "../../shared/ai-connectors";
 import { useAiConnectorStore } from "../stores/aiConnectorStore";
+import { useCanvasStore } from "../stores/canvasStore";
+import { usePinStore } from "../stores/pinStore";
+import { getVisibleCanvasWorldRect } from "../canvas/viewportBounds";
 import { resolveTerminalWithRuntimeState } from "../stores/terminalRuntimeStateStore";
 import { useNotificationStore } from "../stores/notificationStore";
 import { createTerminalInScene } from "./terminalSceneActions";
@@ -438,6 +442,23 @@ export function addAiNodeInScene(
     useOrchestrationStore.getState().connect(orchestratorId, "source", id);
   }
   return id;
+}
+
+/** Center of the canvas area the user currently sees, in world coordinates. */
+export function visibleCanvasCenter(): { x: number; y: number } {
+  const canvas = useCanvasStore.getState();
+  const rect = getVisibleCanvasWorldRect(
+    canvas.viewport,
+    canvas.rightPanelCollapsed,
+    canvas.leftPanelCollapsed,
+    canvas.leftPanelWidth,
+    canvas.rightPanelWidth,
+    usePinStore.getState().openProjectPath !== null,
+  );
+  return {
+    x: Math.round(rect.x + rect.w / 2 - AI_NODE_WIDTH / 2),
+    y: Math.round(rect.y + rect.h / 2 - AI_NODE_HEIGHT / 2),
+  };
 }
 
 export function getTerminalDisplayName(terminal: TerminalData): string {
