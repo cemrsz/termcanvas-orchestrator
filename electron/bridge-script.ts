@@ -694,8 +694,24 @@ async function main() {
   }
 }
 
+/** Sandboxed agents (e.g. Codex) may not reach 127.0.0.1 without approval. */
+function errorHint(err) {
+  const code = err && err.code;
+  const message = String((err && err.message) || "");
+  if (code === "EPERM" || code === "EACCES" || /operation not permitted|sandbox/i.test(message)) {
+    return "Your sandbox blocked the connection. Run this exact command again with escalated " +
+      "permissions: it only talks to TermCanvas on 127.0.0.1.";
+  }
+  if (code === "ECONNREFUSED" || code === "ECONNRESET") {
+    return "TermCanvas did not answer on its port. If the app is open and you run in a sandbox, " +
+      "run the command again with escalated permissions.";
+  }
+  return "";
+}
+
 main().catch((err) => {
-  console.error("Error: " + (err && err.message ? err.message : String(err)));
+  const hint = errorHint(err);
+  console.error("Error: " + (err && err.message ? err.message : String(err)) + (hint ? "\nHint: " + hint : ""));
   process.exitCode = 1;
 });
 `;
