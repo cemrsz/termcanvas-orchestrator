@@ -1133,6 +1133,20 @@ export const en = {
   "ai.hub.testApi": "Test API",
   "ai.hub.testCli": "Test CLI",
   "ai.hub.addToCanvas": "Add to canvas",
+  "ai.hub.tab.council": "Council",
+  "ai.hub.copy": "Copy answer",
+  "ai.hub.council.intro":
+    "Ask several AIs the same question at once and compare their answers side by side. Then let one of them write a synthesis.",
+  "ai.hub.council.who": "Ask",
+  "ai.hub.council.noneReady":
+    "No AI is ready yet: add a key or install a CLI in Connectors.",
+  "ai.hub.council.switchTransport": "Switch between API and CLI",
+  "ai.hub.council.placeholder": "Your question… (⌘/Ctrl + Enter to send)",
+  "ai.hub.council.ask": (count: number) => `Ask ${count}`,
+  "ai.hub.council.synthesize": (name: string) => `Synthesize with ${name}`,
+  "ai.hub.council.synthesisTitle": "Synthesis",
+  "ai.hub.council.synthesisPrompt":
+    "Several AI models answered the same question. Write a short synthesis: where they agree, where they disagree, and the best combined answer. Use the language of the question.",
   "ai.hub.insecure":
     "This system has no keyring, so the key is stored unencrypted in a file only your user can read.",
 } as const;

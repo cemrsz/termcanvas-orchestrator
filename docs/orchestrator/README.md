@@ -72,6 +72,7 @@ ekler; aşağıdaki liste commit sırasıyla aynıdır.
 60. [Rozetler](60-rozetler.md) — kim kime bağlı bir bakışta: model sayısı ve ⇄ eş isimleri
 61. [AI Hub: hepsi bir arada](61-ai-hub.md) — tüm sağlayıcılar tek pencerede; anahtar kaydet/sil, durum, uyarılar
 62. [AI Hub: kart ayrıntıları](62-hub-kart-ayrintilari.md) — CLI sürümü, model listesi çekme, API/CLI testi, tek tıkla canvas'a ekle
+63. [AI Hub: Konsey](63-hub-konsey.md) — çoklu AI'a tek soru, yan yana cevaplar, tek tıkla sentez
 
 ## Nasıl kullanılır
 
