@@ -15,6 +15,14 @@
  */
 
 import { promptAndAddProjectToScene } from "../../canvas/sceneCommands";
+import { useAiHubStore } from "../../stores/aiHubStore";
+import {
+  addAiNodeInScene,
+  createAgentTrioInScene,
+  createModelCouncilInScene,
+  visibleCanvasCenter,
+} from "../../actions/orchestrationSceneActions";
+import { sortedAiConnectors } from "../../../shared/ai-connectors";
 import {
   fitAllProjects,
   setZoomToHundred,
@@ -592,9 +600,88 @@ function waypointCommands(ctx: CommandContext): PaletteCommand[] {
   return list;
 }
 
+/** Worktree new terminals go to: the focused one, else the first. */
+function targetWorktree(): { projectId: string; worktreeId: string } | null {
+  const { focusedProjectId, focusedWorktreeId, projects } =
+    useProjectStore.getState();
+  if (focusedProjectId && focusedWorktreeId) {
+    return { projectId: focusedProjectId, worktreeId: focusedWorktreeId };
+  }
+  const project = projects[0];
+  const worktree = project?.worktrees[0];
+  return project && worktree ? { projectId: project.id, worktreeId: worktree.id } : null;
+}
+
+/** AI Hub, templates and AI model nodes. */
+function aiCommands(ctx: CommandContext): PaletteCommand[] {
+  const { t, isMac } = ctx;
+  const hub = useAiHubStore.getState();
+  const worktree = targetWorktree();
+  const list: PaletteCommand[] = [
+    {
+      id: "ai-hub",
+      section: "action",
+      title: t["palette.ai.hub"],
+      subtitle: t["ai.hub.subtitle"],
+      keywords: ["ai", "keys", "api", "claude", "gemini", "chatgpt", "openai", "codex", "models"],
+      hint: shortcutHint("toggleAiHub", isMac),
+      perform: () => hub.openHub("connectors"),
+    },
+    {
+      id: "ai-hub-council",
+      section: "action",
+      title: t["palette.ai.council"],
+      keywords: ["ai", "ask", "compare", "council", "konsey", "models"],
+      perform: () => hub.openHub("council"),
+    },
+    {
+      id: "ai-hub-feed",
+      section: "action",
+      title: t["palette.ai.feed"],
+      keywords: ["ai", "messages", "log", "conversation", "akış", "pipeline"],
+      perform: () => hub.openHub("feed"),
+    },
+  ];
+  if (worktree) {
+    list.push(
+      {
+        id: "ai-template-trio",
+        section: "canvas",
+        title: t["palette.ai.trio"],
+        subtitle: t["canvas.menu.template.trioHint"],
+        keywords: ["claude", "gemini", "codex", "pipeline", "agents", "trio", "üçlü"],
+        perform: () => void createAgentTrioInScene({ ...worktree, position: visibleCanvasCenter() }),
+      },
+      {
+        id: "ai-template-council",
+        section: "canvas",
+        title: t["palette.ai.councilTemplate"],
+        subtitle: t["canvas.menu.template.councilHint"],
+        keywords: ["orchestrator", "models", "council", "claude", "gemini", "chatgpt"],
+        perform: () =>
+          void createModelCouncilInScene({ ...worktree, position: visibleCanvasCenter() }),
+      },
+    );
+  }
+  for (const plugin of sortedAiConnectors()) {
+    list.push({
+      id: `ai-add-${plugin.id}`,
+      section: "canvas",
+      title: t["palette.ai.add"](plugin.name),
+      subtitle: plugin.vendor,
+      keywords: ["ai", "model", "node", plugin.id, plugin.vendor.toLowerCase()],
+      perform: () => {
+        addAiNodeInScene(plugin.id, visibleCanvasCenter());
+      },
+    });
+  }
+  return list;
+}
+
 export function buildCommands(ctx: CommandContext): PaletteCommand[] {
   return [
     ...actionCommands(ctx),
+    ...aiCommands(ctx),
     ...canvasCommands(ctx),
     ...terminalCommands(),
     ...projectCommands(),

@@ -1102,6 +1102,14 @@ export const en = {
   "canvas.menu.template.council": "Model council",
   "canvas.menu.template.councilHint": "orchestrator + Claude, Gemini, ChatGPT",
 
+  // Command palette: AI
+  "palette.ai.hub": "Open AI Hub",
+  "palette.ai.council": "AI Hub: ask several AIs at once (council)",
+  "palette.ai.feed": "AI Hub: show what the AIs say to each other",
+  "palette.ai.trio": "New Claude ⇄ Gemini ⇄ Codex (wired to each other)",
+  "palette.ai.councilTemplate": "New model council (orchestrator + 3 models)",
+  "palette.ai.add": (name: string) => `Add AI model: ${name}`,
+
   // AI Hub
   shortcut_toggle_ai_hub: "AI Hub",
   "ai.hub.toolbar": (shortcut: string) => `AI Hub: keys, council, live feed (${shortcut})`,
