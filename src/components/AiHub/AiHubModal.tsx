@@ -7,6 +7,8 @@ import { useAiConnectorStore } from "../../stores/aiConnectorStore";
 import { useAiHubStore, type AiHubTab } from "../../stores/aiHubStore";
 import { ConnectorsTab } from "./ConnectorsTab";
 import { CouncilTab } from "./CouncilTab";
+import { FeedTab } from "./FeedTab";
+import { useCommsStore } from "../../stores/commsStore";
 
 /**
  * AI Hub: every AI the canvas can talk to in one place — connectors (keys,
@@ -20,6 +22,7 @@ export function AiHubModal() {
   const setTab = useAiHubStore((state) => state.setTab);
   const closeHub = useAiHubStore((state) => state.closeHub);
   const refresh = useAiConnectorStore((state) => state.refresh);
+  const unread = useCommsStore((state) => state.unread);
   const panelRef = useRef<HTMLDivElement>(null);
   useBodyScrollLock(open);
 
@@ -48,6 +51,13 @@ export function AiHubModal() {
   const tabs: { id: AiHubTab; label: string }[] = [
     { id: "connectors", label: t["ai.hub.tab.connectors"] },
     { id: "council", label: t["ai.hub.tab.council"] },
+    {
+      id: "feed",
+      label:
+        unread > 0 && tab !== "feed"
+          ? t["ai.hub.tab.feedUnread"](unread)
+          : t["ai.hub.tab.feed"],
+    },
   ];
 
   return createPortal(
@@ -102,6 +112,7 @@ export function AiHubModal() {
         <div role="tabpanel" className="min-h-0 flex-1 overflow-y-auto p-4">
           {tab === "connectors" && <ConnectorsTab />}
           {tab === "council" && <CouncilTab />}
+          {tab === "feed" && <FeedTab />}
         </div>
       </div>
     </div>,
