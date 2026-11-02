@@ -199,7 +199,7 @@ async function cmdWait(rest, flags) {
   let agentId = null;
   let sentAt = 0;
   while (true) {
-    const info = await api("GET", BASE + "/agent?agent=" + encodeURIComponent(agentRef));
+    const info = await api("GET", BASE + "/agent?waiting=1&agent=" + encodeURIComponent(agentRef));
     const a = info.agent;
     if (!agentId) {
       agentId = a.id;

@@ -19,7 +19,12 @@ import {
   createDefaultComposerSubmitDeps,
   submitComposerRequest,
 } from "./composer-submit";
-import { extractLastAssistantReply, stripAnsi } from "./orchestrator-bridge";
+import {
+  extractLastAssistantReply,
+  stripAnsi,
+  writeAgentBridgeWorkspace,
+} from "./orchestrator-bridge";
+import { PipelineGuard, framePipelineMessage } from "./pipeline-guard";
 import type {
   BridgeAgent,
   BridgeManifest,
@@ -39,11 +44,14 @@ interface ApiServerDeps {
   projectScanner: ProjectScanner;
   telemetryService: TelemetryService;
   taskStore: PinStore;
+  /** Port file the bridge scripts read (for receivers' bridge files). */
+  portFile: string;
 }
 
 export class ApiServer {
   private server: http.Server | null = null;
   private deps: ApiServerDeps;
+  private pipelineGuard = new PipelineGuard();
 
   constructor(deps: ApiServerDeps) {
     this.deps = deps;
@@ -226,7 +234,11 @@ export class ApiServer {
       const action = bridgeMatch[3] ?? "";
       if (method === "GET" && action === "") return this.bridgeManifest(scope);
       if (method === "GET" && action === "agent") {
-        return this.bridgeAgent(scope, url.searchParams.get("agent"));
+        return this.bridgeAgent(
+          scope,
+          url.searchParams.get("agent"),
+          url.searchParams.get("waiting") === "1",
+        );
       }
       if (method === "POST" && action === "send") return this.bridgeSend(scope, body);
       if (method === "GET" && action === "reply") {
@@ -700,9 +712,14 @@ export class ApiServer {
     };
   }
 
-  private async bridgeAgent(scope: BridgeScope, ref: string | null) {
+  private async bridgeAgent(
+    scope: BridgeScope,
+    ref: string | null,
+    waiting: boolean,
+  ) {
     const manifest = await this.loadBridgeManifest(scope);
     const agent = this.resolveBridgeAgent(manifest, ref);
+    if (waiting) this.pipelineGuard.noteWaiting(scope.id, agent.id);
     return { agent: this.withTelemetry(agent) };
   }
 
@@ -720,13 +737,36 @@ export class ApiServer {
       );
     }
 
+    let delivered = text;
+    if (agent.via === "pipeline") {
+      const verdict = this.pipelineGuard.checkSend(
+        { id: manifest.self.id, name: manifest.self.title },
+        { id: agent.id, name: agent.name },
+      );
+      if (!verdict.ok) {
+        throw Object.assign(new Error(verdict.reason), { status: verdict.status });
+      }
+      // The receiver gets its own bridge so it can answer and use its peers.
+      const receiver = writeAgentBridgeWorkspace({
+        terminalId: agent.id,
+        worktreePath: agent.worktreePath,
+        portFile: this.deps.portFile,
+      });
+      delivered = framePipelineMessage({
+        fromName: manifest.self.title,
+        fromType: manifest.self.type,
+        text,
+        receiverScriptRelPath: receiver.scriptRelPath,
+      });
+    }
+
     const result = await submitComposerRequest(
       {
         terminalId: agent.id,
         ptyId: agent.ptyId,
         terminalType: agent.type as TerminalType,
         worktreePath: agent.worktreePath,
-        text,
+        text: delivered,
         images: [],
       },
       createDefaultComposerSubmitDeps(

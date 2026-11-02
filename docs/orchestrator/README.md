@@ -43,6 +43,7 @@ ekler; aşağıdaki liste commit sırasıyla aynıdır.
 31. [Köprü manifesti](31-kopru-manifesti.md) — her agent'ın erişebildiği eşler, modeller ve kaynaklar; kabuklar hariç
 32. [API: /bridge uçları](32-api-bridge.md) — her bağlı agent için ortak uçlar; /orchestrator aynı kodla
 33. [Köprü: BRIDGE.md + tc.mjs](33-agent-koprusu.md) — tek betik /bridge uçlarına geçti; peers modelleri de gösterir; bridge:prepare
+34. [Pipeline mesajları: çerçeve ve korumalar](34-pipeline-koruma.md) — gönderen başlığı, karşılıklı bekleme kilidi ve hız sınırı
 
 ## Nasıl kullanılır
 

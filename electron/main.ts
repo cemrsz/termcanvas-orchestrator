@@ -423,6 +423,7 @@ const apiServer = new ApiServer({
   projectScanner,
   telemetryService,
   taskStore,
+  portFile: PORT_FILE,
 });
 
 function openPinPreviewWindow(repo: string, pinId: string): void {
