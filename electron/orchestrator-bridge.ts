@@ -151,6 +151,7 @@ ${cli} reply <agent>                      print the agent's latest reply again
 ${cli} consult <model> <text>             ask a wired AI model (Claude, Gemini, ChatGPT… over API or CLI)
 ${cli} council <question> [--agents]      ask every wired model (and agent) the same question, compare
 ${cli} broadcast <text>                   message every wired agent (then wait on each)
+${cli} discuss <p1,p2[,p3]> <topic> [--rounds 2]   let peers discuss in turns; prints the transcript
 ${cli} source <S#|name> / trigger <S#|name>   read / trigger a wired data source
 \`\`\`
 

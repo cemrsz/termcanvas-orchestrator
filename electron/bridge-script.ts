@@ -429,6 +429,91 @@ async function cmdCouncil(rest, flags) {
   console.log(answers.join("\n\n----------------------------------------\n\n"));
 }
 
+const DISCUSS_TURN_CHARS = 1500;
+const DISCUSS_OLD_TURN_CHARS = 500;
+
+function discussPrompt(participant, everyone, topic, transcript, round, rounds, moderator) {
+  const others = everyone
+    .filter((p) => p.item.id !== participant.item.id)
+    .map((p) => p.item.name + " (" + (p.kind === "model" ? p.item.connectorName + " model" : p.item.type + " agent") + ")")
+    .join(", ");
+  const recentFrom = Math.max(0, transcript.length - everyone.length * 2);
+  const lines = transcript.map((turn, i) => {
+    const limit = i >= recentFrom ? DISCUSS_TURN_CHARS : DISCUSS_OLD_TURN_CHARS;
+    const text = turn.text.length > limit ? turn.text.slice(0, limit) + " …" : turn.text;
+    return "[" + turn.speaker + ", round " + turn.round + "]: " + text;
+  });
+  return [
+    "You are " + participant.item.name + " in a discussion between AIs on the user's TermCanvas canvas, " +
+      "moderated by " + moderator + ". The others: " + others + ".",
+    "",
+    "Topic:",
+    topic.trim(),
+    "",
+    transcript.length > 0 ? "Discussion so far:\n" + lines.join("\n\n") : "You speak first.",
+    "",
+    "Round " + round + " of " + rounds + ", your turn. Respond to the others by name: build on good points, " +
+      "challenge weak ones, add what is missing. If you agree, say so briefly. At most about 200 words, " +
+      "in the language of the topic.",
+  ].join("\n");
+}
+
+/**
+ * Let wired peers (agents and/or models) discuss a topic in turns. Each one
+ * sees what the others said before it speaks.
+ */
+async function cmdDiscuss(rest, flags) {
+  const list = rest.shift();
+  if (!list) {
+    throw new Error("Usage: discuss <p1,p2[,p3]> <topic> | --file <path> [--rounds 2]");
+  }
+  const topic = readTextArg(rest, flags);
+  const rounds = Math.min(Math.max(parseInt(flags.rounds, 10) || 2, 1), 6);
+  const manifest = await api("GET", BASE);
+  const participants = list
+    .split(",")
+    .map((ref) => ref.trim())
+    .filter(Boolean)
+    .map((ref) => classifyPeer(manifest, ref));
+  const unique = participants.filter(
+    (p, i) => participants.findIndex((q) => q.item.id === p.item.id) === i,
+  );
+  if (unique.length < 2) throw new Error("A discussion needs at least two wired peers.");
+
+  const transcript = [];
+  console.log(
+    "Discussion: " + unique.map((p) => p.item.name).join(" ↔ ") + " · " + rounds + " round(s)",
+  );
+  for (let round = 1; round <= rounds; round++) {
+    for (const participant of unique) {
+      const prompt = discussPrompt(participant, unique, topic, transcript, round, rounds, manifest.self.title);
+      let text;
+      try {
+        if (participant.kind === "model") {
+          const r = await askModel(participant.item, prompt, flags, "discuss · round " + round);
+          text = r.text;
+        } else {
+          await sendTo(participant.item.id, prompt, { quiet: true });
+          const result = await waitFor(participant.item.id, parseInt(flags.timeout, 10) || 240);
+          if (result.code !== 0) {
+            text = result.code === 3 ? "(waits for the user's approval)" : "(still working; skipped this turn)";
+          } else {
+            text = result.reply || "(no reply)";
+          }
+        }
+      } catch (error) {
+        text = "(failed: " + error.message + ")";
+      }
+      transcript.push({ speaker: participant.item.name, round, text: text.trim() });
+      console.log("");
+      console.log("### " + participant.item.name + " · round " + round);
+      console.log(truncate(text.trim(), MAX_PRINT_CHARS));
+    }
+  }
+  console.log("");
+  console.log("Discussion over. Summarize where they agree and disagree for the user.");
+}
+
 async function cmdBroadcast(rest, flags) {
   const text = readTextArg(rest, flags);
   const manifest = await api("GET", BASE);
@@ -572,6 +657,7 @@ const HELP = [
   "  consult <model> <text> | --file <path>  ask a wired AI model",
   "  council <question> [--models M1,M2] [--agents [1,2]]   ask several at once, compare",
   "  broadcast <text> | --file <path>        message every wired agent",
+  "  discuss <p1,p2[,p3]> <topic> [--rounds 2]   let peers discuss in turns",
   "  source <S#|name> [--lines 200] [--query \"k=v\"]",
   "  trigger <S#|name> [--data '<json>' | --file payload.json]",
 ].join("\n");
@@ -595,6 +681,8 @@ async function main() {
       return cmdCouncil(positional, flags);
     case "broadcast":
       return cmdBroadcast(positional, flags);
+    case "discuss":
+      return cmdDiscuss(positional, flags);
     case "reply":
       return cmdReply(positional);
     case "source":
