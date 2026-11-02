@@ -2,8 +2,9 @@ import { useMemo } from "react";
 import { useLocaleStore } from "../stores/localeStore";
 import { en } from "./en";
 import { zh } from "./zh";
+import { tr } from "./tr";
 
-const dictionaries = { en, zh } as const;
+const dictionaries = { en, zh, tr } as const;
 type Locale = keyof typeof dictionaries;
 type Dict = typeof en;
 
@@ -20,6 +21,11 @@ function getMerged(locale: Locale): Dict {
   const merged = { ...en, ...dictionaries[locale] } as Dict;
   mergedCache.set(locale, merged);
   return merged;
+}
+
+/** The dictionary for the current locale, for code outside React. */
+export function getDictionary(): Dict {
+  return getMerged(useLocaleStore.getState().locale);
 }
 
 export function useT(): Dict {

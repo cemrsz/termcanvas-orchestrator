@@ -1,7 +1,5 @@
-import { en } from "./i18n/en";
-import { zh } from "./i18n/zh";
-import { useLocaleStore } from "./stores/localeStore";
 import { useProjectStore } from "./stores/projectStore";
+import { getDictionary } from "./i18n/useT";
 import { snapshotState } from "./snapshotState";
 import {
   useSnapshotHistoryStore,
@@ -9,8 +7,7 @@ import {
 } from "./stores/snapshotHistoryStore";
 
 function dict() {
-  const locale = useLocaleStore.getState().locale;
-  return locale === "zh" ? { ...en, ...zh } : en;
+  return getDictionary();
 }
 
 interface CountStats {

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Background,
+  ConnectionMode,
   ReactFlow,
   ReactFlowProvider,
   useNodesState,
@@ -61,20 +62,37 @@ import {
 } from "./xyflowNodes";
 import {
   buildOrchestrationEdges,
-  isOrchestrationInHandle,
-  isOrchestratorOutHandle,
+  buildPipeEdges,
+  ORCHESTRATOR_COLOR,
+  resolveWireIntent,
+  SOURCE_KIND_META,
   buildSourceFlowNodes,
   orchestrationEdgeTypes,
   sourcesLayoutKey,
   type OrchestrationFlowEdge,
+  type PipeFlowEdge,
 } from "./orchestrationFlow";
-import { useOrchestrationStore } from "../stores/orchestrationStore";
+import { TERMINAL_TYPE_CONFIG } from "../terminal/terminalTypeConfig";
+import {
+  isAgentTerminalType,
+  useOrchestrationStore,
+} from "../stores/orchestrationStore";
 import { useTerminalRuntimeStateStore } from "../stores/terminalRuntimeStateStore";
 import {
+  addAiNodeInScene,
   addOrchestrationSourceInScene,
+  createAgentTrioInScene,
+  createModelCouncilInScene,
+  connectPipeInScene,
   createOrchestratorInScene,
+  ORCHESTRATOR_TYPES,
   refreshOrchestratorWorkspaces,
+  type OrchestratorType,
 } from "../actions/orchestrationSceneActions";
+import {
+  sortedAiConnectors,
+  type AiConnectorId,
+} from "../../shared/ai-connectors";
 import type { OrchestrationSourceKind } from "../types/orchestration";
 import {
   getCanvasLeftInset,
@@ -85,7 +103,7 @@ import { resolveCollisions } from "./collisionResolver";
 import { WorktreeLabelLayer } from "./WorktreeLabelLayer";
 import { ClusterLinkLayer } from "./ClusterLinkLayer";
 import { SpatialWaypointsLayer } from "./SpatialWaypointsLayer";
-import { ContextMenu } from "../components/ContextMenu";
+import { ContextMenu, type MenuItem } from "../components/ContextMenu";
 import { createTerminalInScene } from "../actions/terminalSceneActions";
 import type { TerminalType } from "../types";
 
@@ -419,15 +437,47 @@ function XyFlowCanvasInner() {
     return { projectId: fallbackProject.id, worktreeId: fallbackWorktree.id };
   }, []);
 
-  const handleContextMenuOrchestrator = useCallback(() => {
+  const handleContextMenuOrchestrator = useCallback(
+    (type: OrchestratorType) => {
+      if (!contextMenu) return;
+      const target = resolveContextWorktree();
+      if (!target) return;
+      void createOrchestratorInScene({
+        ...target,
+        type,
+        position: { x: contextMenu.flowX, y: contextMenu.flowY },
+      });
+    },
+    [contextMenu, resolveContextWorktree],
+  );
+
+  const handleContextMenuTrio = useCallback(() => {
     if (!contextMenu) return;
     const target = resolveContextWorktree();
     if (!target) return;
-    void createOrchestratorInScene({
+    void createAgentTrioInScene({
       ...target,
       position: { x: contextMenu.flowX, y: contextMenu.flowY },
     });
   }, [contextMenu, resolveContextWorktree]);
+
+  const handleContextMenuCouncil = useCallback(() => {
+    if (!contextMenu) return;
+    const target = resolveContextWorktree();
+    if (!target) return;
+    void createModelCouncilInScene({
+      ...target,
+      position: { x: contextMenu.flowX, y: contextMenu.flowY },
+    });
+  }, [contextMenu, resolveContextWorktree]);
+
+  const handleContextMenuAi = useCallback(
+    (connector: AiConnectorId) => {
+      if (!contextMenu) return;
+      addAiNodeInScene(connector, { x: contextMenu.flowX, y: contextMenu.flowY });
+    },
+    [contextMenu],
+  );
 
   const handleContextMenuSource = useCallback(
     (kind: OrchestrationSourceKind) => {
@@ -442,6 +492,7 @@ function XyFlowCanvasInner() {
 
   const sources = useOrchestrationStore((state) => state.sources);
   const links = useOrchestrationStore((state) => state.links);
+  const pipes = useOrchestrationStore((state) => state.pipes);
   const orchestratorIds = useOrchestrationStore(
     (state) => state.orchestratorIds,
   );
@@ -472,8 +523,9 @@ function XyFlowCanvasInner() {
   const [nodes, setNodes, onNodesChange] =
     useNodesState<AnyCanvasFlowNode>(projectedNodes);
 
-  const edges = useMemo(() => {
+  const edges = useMemo<(OrchestrationFlowEdge | PipeFlowEdge)[]>(() => {
     const terminalRects = new Map<string, { x: number; y: number; w: number }>();
+    const terminalColors = new Map<string, string>();
     const busyTerminalIds = new Set<string>();
     for (const project of projects) {
       for (const worktree of project.worktrees) {
@@ -484,35 +536,73 @@ function XyFlowCanvasInner() {
             y: terminal.y,
             w: terminal.width,
           });
+          terminalColors.set(
+            terminal.id,
+            TERMINAL_TYPE_CONFIG[terminal.type]?.color ?? "var(--accent)",
+          );
           if (runtimeStates[terminal.id]?.status === "active") {
             busyTerminalIds.add(terminal.id);
           }
         }
       }
     }
-    return buildOrchestrationEdges({
-      links,
-      orchestratorIds,
-      sources,
-      terminalRects,
-      busyTerminalIds,
-    });
-  }, [links, orchestratorIds, projects, runtimeStates, sources]);
+    return [
+      ...buildOrchestrationEdges({
+        links,
+        orchestratorIds,
+        sources,
+        terminalRects,
+        busyTerminalIds,
+      }),
+      ...buildPipeEdges({
+        pipes,
+        sources,
+        terminalRects,
+        terminalColors,
+        busyTerminalIds,
+      }),
+    ];
+  }, [links, orchestratorIds, pipes, projects, runtimeStates, sources]);
 
-  const isValidConnection = useCallback<IsValidConnection>((connection) => {
-    const state = useOrchestrationStore.getState();
-    if (!isOrchestratorOutHandle(connection.sourceHandle)) return false;
-    if (!isOrchestrationInHandle(connection.targetHandle)) return false;
-    if (!state.orchestratorIds.includes(connection.source)) return false;
-    if (connection.source === connection.target) return false;
-    return !state.orchestratorIds.includes(connection.target);
-  }, []);
+  const wireIntent = useCallback(
+    (connection: Parameters<typeof resolveWireIntent>[0]) => {
+      const state = useOrchestrationStore.getState();
+      return resolveWireIntent(connection, {
+        orchestratorIds: state.orchestratorIds,
+        sources: state.sources,
+        isAgent: (nodeId) => {
+          for (const project of useProjectStore.getState().projects) {
+            for (const worktree of project.worktrees) {
+              const terminal = worktree.terminals.find((t) => t.id === nodeId);
+              if (terminal) return isAgentTerminalType(terminal.type);
+            }
+          }
+          return false;
+        },
+      });
+    },
+    [],
+  );
 
-  const handleConnect = useCallback<OnConnect>((connection: Connection) => {
-    const state = useOrchestrationStore.getState();
-    const targetKind = state.sources[connection.target] ? "source" : "terminal";
-    state.connect(connection.source, targetKind, connection.target);
-  }, []);
+  const isValidConnection = useCallback<IsValidConnection>(
+    (connection) => wireIntent(connection) !== null,
+    [wireIntent],
+  );
+
+  const handleConnect = useCallback<OnConnect>(
+    (connection: Connection) => {
+      const intent = wireIntent(connection);
+      if (!intent) return;
+      if (intent.kind === "link") {
+        useOrchestrationStore
+          .getState()
+          .connect(intent.orchestratorId, intent.targetKind, intent.targetId);
+      } else {
+        connectPipeInScene(intent.a, intent.b);
+      }
+    },
+    [wireIntent],
+  );
 
   useEffect(() => {
     setNodes(projectedNodes);
@@ -526,7 +616,12 @@ function XyFlowCanvasInner() {
   );
 
   const handleInit = useCallback(
-    (reactFlow: ReactFlowInstance<AnyCanvasFlowNode, OrchestrationFlowEdge>) => {
+    (
+      reactFlow: ReactFlowInstance<
+        AnyCanvasFlowNode,
+        OrchestrationFlowEdge | PipeFlowEdge
+      >,
+    ) => {
       useCanvasStore.getState().registerViewportAdapter({
         setViewport: (nextViewport, options) => {
           void reactFlow.setViewport(
@@ -618,7 +713,7 @@ function XyFlowCanvasInner() {
         Math.round(node.position.x / SNAP_GRID[0]) * SNAP_GRID[0];
       const snappedY =
         Math.round(node.position.y / SNAP_GRID[1]) * SNAP_GRID[1];
-      if (node.type === "orchestrationSource") {
+      if (node.type === "orchestrationSource" || node.type === "aiModel") {
         useOrchestrationStore
           .getState()
           .updateSource(node.id, { x: snappedX, y: snappedY });
@@ -860,7 +955,8 @@ function XyFlowCanvasInner() {
         edgeTypes={orchestrationEdgeTypes}
         onConnect={handleConnect}
         isValidConnection={isValidConnection}
-        connectionLineStyle={{ stroke: "var(--purple)", strokeWidth: 2 }}
+        connectionMode={ConnectionMode.Loose}
+        connectionLineStyle={{ stroke: "var(--accent)", strokeWidth: 2 }}
         onInit={handleInit}
         onNodesChange={onNodesChange}
         onMove={handleMove}
@@ -909,50 +1005,67 @@ function XyFlowCanvasInner() {
               },
             },
             { type: "separator" },
-            {
-              label: "New Shell",
-              onClick: () => handleContextMenuPick("shell"),
-            },
-            {
-              label: "New Claude",
-              onClick: () => handleContextMenuPick("claude"),
-            },
-            {
-              label: "New Codex",
-              onClick: () => handleContextMenuPick("codex"),
-            },
-            {
-              label: "New Gemini",
-              onClick: () => handleContextMenuPick("gemini"),
-            },
-            {
-              label: "New Lazygit",
-              onClick: () => handleContextMenuPick("lazygit"),
-            },
+            ...(["shell", "claude", "codex", "gemini", "lazygit"] as const).map(
+              (type): MenuItem => ({
+                label: t["canvas.menu.new"](TERMINAL_TYPE_CONFIG[type].label),
+                color: type === "shell" ? undefined : TERMINAL_TYPE_CONFIG[type].color,
+                onClick: () => handleContextMenuPick(type),
+              }),
+            ),
             { type: "separator" },
             {
-              label: "New Orchestrator",
-              onClick: handleContextMenuOrchestrator,
+              type: "submenu",
+              label: t["canvas.menu.newOrchestrator"],
+              color: ORCHESTRATOR_COLOR,
+              items: ORCHESTRATOR_TYPES.map((type) => ({
+                label: TERMINAL_TYPE_CONFIG[type].label,
+                color: TERMINAL_TYPE_CONFIG[type].color,
+                onClick: () => handleContextMenuOrchestrator(type),
+              })),
             },
             {
-              label: "Add Google Sheet",
-              onClick: () => handleContextMenuSource("sheet"),
+              type: "submenu",
+              label: t["canvas.menu.addAi"],
+              items: sortedAiConnectors().flatMap((plugin, index, all): MenuItem[] => [
+                ...(index > 0 && all[index - 1].featured && !plugin.featured
+                  ? [{ type: "separator" as const }]
+                  : []),
+                {
+                  label: plugin.name,
+                  color: plugin.color,
+                  hint: plugin.local
+                    ? t["canvas.menu.aiHint.local"]
+                    : plugin.cli
+                      ? t["canvas.menu.aiHint.both"]
+                      : undefined,
+                  onClick: () => handleContextMenuAi(plugin.id),
+                },
+              ]),
             },
             {
-              label: "Add n8n Webhook",
-              onClick: () => handleContextMenuSource("n8n"),
+              type: "submenu",
+              label: t["canvas.menu.templates"],
+              items: [
+                {
+                  label: t["canvas.menu.template.trio"],
+                  hint: t["canvas.menu.template.trioHint"],
+                  onClick: handleContextMenuTrio,
+                },
+                {
+                  label: t["canvas.menu.template.council"],
+                  hint: t["canvas.menu.template.councilHint"],
+                  onClick: handleContextMenuCouncil,
+                },
+              ],
             },
             {
-              label: "Add HTTP API",
-              onClick: () => handleContextMenuSource("api"),
-            },
-            {
-              label: "Add Local File",
-              onClick: () => handleContextMenuSource("file"),
-            },
-            {
-              label: "Add Note",
-              onClick: () => handleContextMenuSource("note"),
+              type: "submenu",
+              label: t["canvas.menu.addSource"],
+              items: (["sheet", "n8n", "api", "file", "note"] as const).map((kind) => ({
+                label: t[`canvas.menu.source.${kind}`],
+                color: SOURCE_KIND_META[kind].color,
+                onClick: () => handleContextMenuSource(kind),
+              })),
             },
           ]}
           onClose={() => setContextMenu(null)}

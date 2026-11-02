@@ -19,8 +19,61 @@ import {
   createDefaultComposerSubmitDeps,
   submitComposerRequest,
 } from "./composer-submit";
-import { extractLastAssistantReply, stripAnsi } from "./orchestrator-bridge";
-import type { OrchestratorManifest } from "../src/types/orchestration";
+import {
+  extractLastAssistantReply,
+  stripAnsi,
+  writeAgentBridgeWorkspace,
+} from "./orchestrator-bridge";
+import { PipelineGuard, framePipelineMessage } from "./pipeline-guard";
+import { detectApprovalPrompt, extractScreenReply } from "./screen-reply";
+import type { CommsLog } from "./comms-log";
+import { AiConnectorError } from "./ai-connector-http";
+import { MAX_AI_TIMEOUT_MS } from "./ai-connector-service";
+import type {
+  AiInvokeRequest,
+  AiInvokeResult,
+} from "../shared/ai-connectors";
+import { clipCommsText, type CommsParty } from "../shared/comms";
+import type {
+  BridgeAgent,
+  BridgeManifest,
+  BridgeModel,
+} from "../src/types/orchestration";
+
+function selfParty(manifest: BridgeManifest): CommsParty {
+  return {
+    kind: "agent",
+    id: manifest.self.id,
+    name: manifest.self.title,
+    type: manifest.self.type,
+  };
+}
+
+function agentParty(agent: Pick<BridgeAgent, "id" | "name" | "type">): CommsParty {
+  return { kind: "agent", id: agent.id, name: agent.name, type: agent.type };
+}
+
+/** How a wired model is told who it is and who is asking. */
+export function buildModelSystemPrompt(
+  model: Pick<BridgeModel, "name" | "persona">,
+  caller: { title: string; type: string },
+): string {
+  const persona = model.persona.trim();
+  return (
+    `You are ${model.name}, an AI model wired into the user's TermCanvas canvas. ` +
+    `${caller.title} (${caller.type}), an AI agent working for the user, is consulting you. ` +
+    "You cannot run tools or see files: rely on what the message contains. " +
+    "Answer directly and concisely, in the language of the request." +
+    (persona ? `\n\nYour role: ${persona}` : "")
+  );
+}
+
+interface BridgeScope {
+  /** The calling agent's terminal id. */
+  id: string;
+  /** /orchestrator/* routes only serve orchestrators. */
+  requireOrchestrator: boolean;
+}
 import type { TerminalType } from "../src/types";
 
 interface ApiServerDeps {
@@ -29,11 +82,18 @@ interface ApiServerDeps {
   projectScanner: ProjectScanner;
   telemetryService: TelemetryService;
   taskStore: PinStore;
+  /** Port file the bridge scripts read (for receivers' bridge files). */
+  portFile: string;
+  ai: { invoke: (request: AiInvokeRequest) => Promise<AiInvokeResult> };
+  comms: CommsLog;
 }
 
 export class ApiServer {
   private server: http.Server | null = null;
   private deps: ApiServerDeps;
+  private pipelineGuard = new PipelineGuard();
+  /** Last text pasted into each agent: where its answer starts on screen. */
+  private lastDelivered = new Map<string, string>();
 
   constructor(deps: ApiServerDeps) {
     this.deps = deps;
@@ -67,6 +127,10 @@ export class ApiServer {
     const pathname = url.pathname;
 
     res.setHeader("Content-Type", "application/json");
+    // Model calls can take minutes; the 30 s idle timeout would cut them.
+    if (method === "POST" && /\/model$/.test(pathname)) {
+      req.socket.setTimeout(MAX_AI_TIMEOUT_MS + 30_000);
+    }
 
     try {
       const body =
@@ -203,21 +267,31 @@ export class ApiServer {
     if (method === "GET" && pathname === "/orchestrator/list") {
       return this.execRenderer(`window.__tcApi.listOrchestrators()`);
     }
-    if (method === "GET" && pathname.match(/^\/orchestrator\/[^/]+$/)) {
-      const id = decodeURIComponent(pathname.split("/")[2]);
-      return this.orchestratorManifest(id);
-    }
-    if (method === "GET" && pathname.match(/^\/orchestrator\/[^/]+\/agent$/)) {
-      const id = decodeURIComponent(pathname.split("/")[2]);
-      return this.orchestratorAgent(id, url.searchParams.get("agent"));
-    }
-    if (method === "POST" && pathname.match(/^\/orchestrator\/[^/]+\/send$/)) {
-      const id = decodeURIComponent(pathname.split("/")[2]);
-      return this.orchestratorSend(id, body);
-    }
-    if (method === "GET" && pathname.match(/^\/orchestrator\/[^/]+\/reply$/)) {
-      const id = decodeURIComponent(pathname.split("/")[2]);
-      return this.orchestratorReply(id, url.searchParams.get("agent"));
+    // /bridge/<terminalId>/… serves any wired agent; /orchestrator/<id>/…
+    // is the same API restricted to orchestrators (older bridge scripts).
+    const bridgeMatch = pathname.match(
+      /^\/(bridge|orchestrator)\/([^/]+)(?:\/(agent|send|reply|model|event))?$/,
+    );
+    if (bridgeMatch) {
+      const scope: BridgeScope = {
+        id: decodeURIComponent(bridgeMatch[2]),
+        requireOrchestrator: bridgeMatch[1] === "orchestrator",
+      };
+      const action = bridgeMatch[3] ?? "";
+      if (method === "GET" && action === "") return this.bridgeManifest(scope);
+      if (method === "GET" && action === "agent") {
+        return this.bridgeAgent(
+          scope,
+          url.searchParams.get("agent"),
+          url.searchParams.get("waiting") === "1",
+        );
+      }
+      if (method === "POST" && action === "send") return this.bridgeSend(scope, body);
+      if (method === "GET" && action === "reply") {
+        return this.bridgeReply(scope, url.searchParams.get("agent"));
+      }
+      if (method === "POST" && action === "model") return this.bridgeModel(scope, body);
+      if (method === "POST" && action === "event") return this.bridgeEvent(scope, body);
     }
 
     throw Object.assign(new Error("Not found"), { status: 404 });
@@ -610,13 +684,16 @@ export class ApiServer {
     return this.execRenderer(`window.__tcApi.getProjects()`);
   }
 
-  private async loadOrchestratorManifest(
-    orchestratorId: string,
-  ): Promise<OrchestratorManifest> {
+  private async loadBridgeManifest(scope: BridgeScope): Promise<BridgeManifest> {
     const manifest = (await this.execRenderer(
-      `window.__tcApi.getOrchestratorManifest(${JSON.stringify(orchestratorId)})`,
-    )) as OrchestratorManifest | null;
+      `window.__tcApi.getBridgeManifest(${JSON.stringify(scope.id)})`,
+    )) as BridgeManifest | null;
     if (!manifest) {
+      throw Object.assign(new Error("Terminal not found on canvas"), {
+        status: 404,
+      });
+    }
+    if (scope.requireOrchestrator && manifest.self.role !== "orchestrator") {
       throw Object.assign(new Error("Orchestrator not found on canvas"), {
         status: 404,
       });
@@ -624,7 +701,7 @@ export class ApiServer {
     return manifest;
   }
 
-  private withTelemetry(agent: OrchestratorManifest["agents"][number]) {
+  private withTelemetry(agent: BridgeAgent) {
     const snapshot = this.deps.telemetryService.getTerminalSnapshot(agent.id);
     return {
       ...agent,
@@ -637,12 +714,12 @@ export class ApiServer {
 
   /**
    * Resolve an agent reference (1-based number, id, or name) against the
-   * agents wired to this orchestrator. Unwired terminals never resolve.
+   * agents wired to the caller. Unwired terminals never resolve.
    */
-  private resolveOrchestratorAgent(
-    manifest: OrchestratorManifest,
+  private resolveBridgeAgent(
+    manifest: BridgeManifest,
     ref: string | null | undefined,
-  ) {
+  ): BridgeAgent {
     const agents = manifest.agents;
     const value = (ref ?? "").trim();
     if (!value) {
@@ -657,8 +734,10 @@ export class ApiServer {
       (agent) => agent.id === value || agent.name.toLowerCase() === lower,
     );
     if (exact.length === 1) return exact[0];
-    const partial = agents.filter((agent) =>
-      agent.name.toLowerCase().includes(lower),
+    const partial = agents.filter(
+      (agent) =>
+        agent.name.toLowerCase().includes(lower) ||
+        agent.type.toLowerCase() === lower,
     );
     if (exact.length === 0 && partial.length === 1) return partial[0];
     const wired =
@@ -671,32 +750,85 @@ export class ApiServer {
     );
   }
 
-  private async orchestratorManifest(orchestratorId: string) {
-    const manifest = await this.loadOrchestratorManifest(orchestratorId);
+  private async bridgeManifest(scope: BridgeScope) {
+    const manifest = await this.loadBridgeManifest(scope);
     return {
       ...manifest,
+      // Older bridge scripts read `orchestrator.title`.
+      orchestrator: manifest.self,
       agents: manifest.agents.map((agent) => this.withTelemetry(agent)),
     };
   }
 
-  private async orchestratorAgent(orchestratorId: string, ref: string | null) {
-    const manifest = await this.loadOrchestratorManifest(orchestratorId);
-    const agent = this.resolveOrchestratorAgent(manifest, ref);
-    return { agent: this.withTelemetry(agent) };
+  private async bridgeAgent(
+    scope: BridgeScope,
+    ref: string | null,
+    waiting: boolean,
+  ) {
+    const manifest = await this.loadBridgeManifest(scope);
+    const agent = this.resolveBridgeAgent(manifest, ref);
+    if (waiting) this.pipelineGuard.noteWaiting(scope.id, agent.id);
+    const live = this.withTelemetry(agent);
+    // Without turn telemetry (e.g. Gemini CLI) the screen tells whether the
+    // agent waits for the user's approval.
+    const untracked = !live.turnState || live.turnState === "unknown";
+    const awaitingApproval = untracked
+      ? detectApprovalPrompt(await this.readScreen(agent))
+      : live.turnState === "awaiting_input";
+    return { agent: { ...live, awaitingApproval } };
   }
 
-  private async orchestratorSend(orchestratorId: string, body: any) {
+  /** Rendered screen text of an agent, falling back to raw PTY output. */
+  private async readScreen(agent: BridgeAgent, maxLines = 200): Promise<string> {
+    try {
+      const text = (await this.execRenderer(
+        `window.__tcApi.readTerminalText(${JSON.stringify(agent.id)}, ${maxLines})`,
+      )) as string | null;
+      if (typeof text === "string" && text.trim()) return text;
+    } catch {
+      // No window or no xterm for this terminal.
+    }
+    const lines = agent.ptyId
+      ? this.deps.ptyManager.getOutput(agent.ptyId, maxLines)
+      : [];
+    return stripAnsi(lines.join("\n"));
+  }
+
+  private async bridgeSend(scope: BridgeScope, body: any) {
     const text = body?.text;
     if (typeof text !== "string" || text.trim().length === 0) {
       throw Object.assign(new Error("text is required"), { status: 400 });
     }
-    const manifest = await this.loadOrchestratorManifest(orchestratorId);
-    const agent = this.resolveOrchestratorAgent(manifest, body?.agent);
+    const manifest = await this.loadBridgeManifest(scope);
+    const agent = this.resolveBridgeAgent(manifest, body?.agent);
     if (!agent.ptyId || !this.deps.ptyManager.getPid(agent.ptyId)) {
       throw Object.assign(
         new Error(`${agent.name} is not running on the canvas`),
         { status: 409 },
       );
+    }
+
+    let delivered = text;
+    if (agent.via === "pipeline") {
+      const verdict = this.pipelineGuard.checkSend(
+        { id: manifest.self.id, name: manifest.self.title },
+        { id: agent.id, name: agent.name },
+      );
+      if (!verdict.ok) {
+        throw Object.assign(new Error(verdict.reason), { status: verdict.status });
+      }
+      // The receiver gets its own bridge so it can answer and use its peers.
+      const receiver = writeAgentBridgeWorkspace({
+        terminalId: agent.id,
+        worktreePath: agent.worktreePath,
+        portFile: this.deps.portFile,
+      });
+      delivered = framePipelineMessage({
+        fromName: manifest.self.title,
+        fromType: manifest.self.type,
+        text,
+        receiverScriptRelPath: receiver.scriptRelPath,
+      });
     }
 
     const result = await submitComposerRequest(
@@ -705,13 +837,13 @@ export class ApiServer {
         ptyId: agent.ptyId,
         terminalType: agent.type as TerminalType,
         worktreePath: agent.worktreePath,
-        text,
+        text: delivered,
         images: [],
       },
       createDefaultComposerSubmitDeps(
         process.platform as "darwin" | "win32" | "linux",
         () => {
-          throw new Error("Images are not supported over the orchestrator API");
+          throw new Error("Images are not supported over the bridge API");
         },
         (ptyId, data) => this.deps.ptyManager.write(ptyId, data),
       ),
@@ -722,31 +854,200 @@ export class ApiServer {
         { status: 500 },
       );
     }
+    this.lastDelivered.set(agent.id, delivered);
+    this.deps.comms.record({
+      kind: "message",
+      from: selfParty(manifest),
+      to: agentParty(agent),
+      text,
+      meta: { via: agent.via },
+    });
     return { ok: true, agent: { id: agent.id, name: agent.name } };
   }
 
-  private async orchestratorReply(orchestratorId: string, ref: string | null) {
-    const manifest = await this.loadOrchestratorManifest(orchestratorId);
+  /** Resolve M1 / id / name / connector ("gemini") among wired models. */
+  private resolveBridgeModel(
+    manifest: BridgeManifest,
+    ref: string | null | undefined,
+  ): BridgeModel {
+    const models = manifest.models;
+    const value = (ref ?? "").trim();
+    if (!value) {
+      throw Object.assign(new Error("model is required"), { status: 400 });
+    }
+    const numbered = /^M?(\d+)$/i.exec(value);
+    if (numbered) {
+      const byIndex = models[parseInt(numbered[1], 10) - 1];
+      if (byIndex) return byIndex;
+    }
+    const lower = value.toLowerCase();
+    const exact = models.filter(
+      (model) => model.id === value || model.name.toLowerCase() === lower,
+    );
+    if (exact.length === 1) return exact[0];
+    const loose = models.filter(
+      (model) =>
+        model.connector === lower ||
+        model.connectorName.toLowerCase() === lower ||
+        model.name.toLowerCase().includes(lower),
+    );
+    if (exact.length === 0 && loose.length === 1) return loose[0];
+    const wired =
+      models.map((model, i) => `M${i + 1} ${model.name}`).join(", ") || "none";
+    throw Object.assign(
+      new Error(`No single wired model matches '${value}'. Wired models: ${wired}`),
+      { status: 404 },
+    );
+  }
+
+  private async bridgeModel(scope: BridgeScope, body: any) {
+    const prompt = typeof body?.prompt === "string" ? body.prompt : body?.text;
+    if (typeof prompt !== "string" || !prompt.trim()) {
+      throw Object.assign(new Error("prompt is required"), { status: 400 });
+    }
+    const manifest = await this.loadBridgeManifest(scope);
+    const model = this.resolveBridgeModel(manifest, body?.model);
+    const caller = selfParty(manifest);
+    const callee: CommsParty = {
+      kind: "model",
+      id: model.id,
+      name: model.name,
+      type: model.connector,
+    };
+    const label = typeof body?.label === "string" ? body.label : undefined;
+    const via = manifest.self.role === "orchestrator" ? "orchestrator" : "pipeline";
+    const correlationId = `ask-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
+    this.deps.comms.record({
+      kind: "ask",
+      from: caller,
+      to: callee,
+      text: prompt,
+      correlationId,
+      meta: { label, transport: model.transport, via },
+    });
+
+    const timeoutSec = Number(body?.timeoutSec);
+    try {
+      const result = await this.deps.ai.invoke({
+        connector: model.connector,
+        transport: model.transport,
+        model: model.model,
+        baseURL: model.baseURL || undefined,
+        system: buildModelSystemPrompt(model, manifest.self),
+        prompt,
+        cwd: manifest.self.worktreePath,
+        timeoutMs: Number.isFinite(timeoutSec) && timeoutSec > 0 ? timeoutSec * 1000 : undefined,
+      });
+      this.deps.comms.record({
+        kind: "answer",
+        from: callee,
+        to: caller,
+        text: result.text,
+        correlationId,
+        meta: {
+          label,
+          via,
+          latencyMs: result.latencyMs,
+          inputTokens: result.usage?.inputTokens,
+          outputTokens: result.usage?.outputTokens,
+          model: result.model,
+          transport: result.transport,
+        },
+      });
+      return {
+        ok: true,
+        model: {
+          id: model.id,
+          name: model.name,
+          connector: model.connector,
+          model: result.model,
+          transport: result.transport,
+        },
+        text: result.text,
+        latencyMs: result.latencyMs,
+        usage: result.usage ?? null,
+      };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.deps.comms.record({
+        kind: "error",
+        from: callee,
+        to: caller,
+        text: message,
+        correlationId,
+        meta: { label, via },
+      });
+      const status =
+        error instanceof AiConnectorError &&
+        ["no-key", "no-model", "no-base-url", "no-cli", "cli-missing"].includes(error.code)
+          ? 424
+          : 502;
+      throw Object.assign(new Error(message), { status });
+    }
+  }
+
+  private async bridgeReply(scope: BridgeScope, ref: string | null) {
+    const manifest = await this.loadBridgeManifest(scope);
     const agent = this.withTelemetry(
-      this.resolveOrchestratorAgent(manifest, ref),
+      this.resolveBridgeAgent(manifest, ref),
     );
     const sessionFile =
       this.deps.telemetryService.getTerminalSnapshot(agent.id)?.session_file;
     const sessionReply = sessionFile
       ? extractLastAssistantReply(sessionFile)
       : null;
+    let reply: { agent: typeof agent; source: string; reply: string };
     if (sessionReply) {
-      return { agent, source: "session", reply: sessionReply };
+      reply = { agent, source: "session", reply: sessionReply };
+    } else {
+      // No transcript (e.g. Gemini CLI): read the answer off the screen.
+      const screen = await this.readScreen(agent);
+      reply = {
+        agent,
+        source: "screen",
+        reply:
+          extractScreenReply(screen, this.lastDelivered.get(agent.id)) ||
+          screen.trim().split("\n").slice(-40).join("\n"),
+      };
     }
-    // No transcript (e.g. a shell worker): fall back to the screen buffer.
-    const lines = agent.ptyId
-      ? this.deps.ptyManager.getOutput(agent.ptyId, 80)
-      : [];
-    return {
-      agent,
-      source: "terminal",
-      reply: stripAnsi(lines.join("\n")).trim(),
-    };
+    this.recordReply(manifest, agent, reply.reply);
+    return reply;
+  }
+
+  /** Put a reply in the feed once, however often the caller reads it. */
+  private recordReply(manifest: BridgeManifest, agent: BridgeAgent, text: string) {
+    if (!text.trim()) return;
+    const previous = this.deps.comms.last("reply", agent.id, manifest.self.id);
+    if (previous && previous.text === clipCommsText(text).text) return;
+    this.deps.comms.record({
+      kind: "reply",
+      from: agentParty(agent),
+      to: selfParty(manifest),
+      text,
+      meta: { via: agent.via },
+    });
+  }
+
+  /** The bridge CLI reports source reads and triggers for the feed. */
+  private async bridgeEvent(scope: BridgeScope, body: any) {
+    const kind = body?.kind;
+    if (kind !== "read" && kind !== "trigger") {
+      throw Object.assign(new Error("kind must be read or trigger"), { status: 400 });
+    }
+    const manifest = await this.loadBridgeManifest(scope);
+    const source = manifest.sources.find((candidate) => candidate.id === body?.source);
+    if (!source) {
+      throw Object.assign(new Error("source is not wired to you"), { status: 404 });
+    }
+    const status = Number(body?.status);
+    this.deps.comms.record({
+      kind,
+      from: selfParty(manifest),
+      to: { kind: "source", id: source.id, name: source.name, type: source.kind },
+      text: typeof body?.text === "string" ? body.text : "",
+      meta: Number.isFinite(status) ? { status } : undefined,
+    });
+    return { ok: true };
   }
 
   private async pinList(url: URL) {

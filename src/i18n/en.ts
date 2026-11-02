@@ -1028,6 +1028,164 @@ export const en = {
   shortcut_prev_canvas: "Prev canvas",
   shortcut_open_canvas_manager: "Open canvas manager",
   settings_shortcut_group_canvases: "Canvases",
+
+  // AI model nodes on the canvas
+  "ai.node.provider": "Provider",
+  "ai.node.model": "Model",
+  "ai.node.modelDefault": (model: string) =>
+    model ? `default: ${model}` : "server default",
+  "ai.node.via": "Via",
+  "ai.node.api": "API",
+  "ai.node.cli": "CLI",
+  "ai.node.noCli": (name: string) => `${name} has no CLI; use the API`,
+  "ai.node.rolePlaceholder":
+    "Role, e.g. strict code reviewer; answer in bullet points",
+  "ai.node.keySaved": (hint: string) => `key ${hint}`,
+  "ai.node.keyEnv": (name: string) => `key from ${name}`,
+  "ai.node.local": "local server",
+  "ai.node.noKey": "no API key",
+  "ai.node.cliReady": (version: string) => `CLI ${version}`,
+  "ai.node.cliMissing": "CLI not installed",
+  "ai.node.cliCheck": "Check CLI",
+  "ai.node.wired": (names: string) => `Wired to ${names}`,
+  "ai.node.wiredCount": (count: number) =>
+    `Wired to ${count} agent${count === 1 ? "" : "s"}`,
+  "ai.node.cliDefault": "CLI's default model",
+  "ai.node.notWired": "Not wired: drag from an agent's port to here",
+  "ai.node.remove": "Remove AI node",
+  "ai.node.openHub": (name: string) => `Set up ${name} in the AI Hub`,
+  "ai.node.test": "Test",
+  "ai.node.testTitle": "Send a short test question with this node's settings",
+  "ai.node.testPrompt":
+    "Reply in one short sentence: who are you, and which model are you running on?",
+  "ai.node.thinking": "thinking…",
+  "ai.node.lastAnswer": "Last answer",
+  "ai.node.lastError": "Last error",
+
+  // Terminal title-bar menu: orchestrator and pipelines
+  "terminal.menu.connectOrchestrator": (suffix: string) =>
+    `Connect to Orchestrator${suffix}`,
+  "terminal.menu.disconnectOrchestrator": (suffix: string) =>
+    `Disconnect from Orchestrator${suffix}`,
+  "terminal.menu.makeOrchestrator": "Make Orchestrator",
+  "terminal.menu.removeOrchestrator": "Remove Orchestrator Role",
+  "terminal.menu.pipeTo": "Wire pipeline to",
+  "terminal.menu.unpipe": "Cut pipeline to",
+  "terminal.menu.brief": "Tell it who it is wired to",
+
+  // Badges under wired tiles
+  "canvas.badge.orchestrator": "ORCHESTRATOR",
+  "canvas.badge.summary": (agents: number, models: number, sources: number) =>
+    [
+      `${agents} agent${agents === 1 ? "" : "s"}`,
+      ...(models > 0 ? [`${models} model${models === 1 ? "" : "s"}`] : []),
+      `${sources} source${sources === 1 ? "" : "s"}`,
+    ].join(" · "),
+  "canvas.badge.pipelineTitle": (names: string) =>
+    `Pipelines: can talk with ${names}`,
+
+  // Canvas right-click menu
+  "canvas.menu.new": (label: string) => `New ${label}`,
+  "canvas.menu.newOrchestrator": "New Orchestrator",
+  "canvas.menu.addAi": "Add AI Model",
+  "canvas.menu.addSource": "Add Source",
+  "canvas.menu.aiHint.both": "API · CLI",
+  "canvas.menu.aiHint.local": "local",
+  "canvas.menu.source.sheet": "Google Sheet",
+  "canvas.menu.source.n8n": "n8n Webhook",
+  "canvas.menu.source.api": "HTTP API",
+  "canvas.menu.source.file": "Local File",
+  "canvas.menu.source.note": "Note",
+  "canvas.menu.templates": "Templates",
+  "canvas.menu.template.trio": "Claude ⇄ Gemini ⇄ Codex",
+  "canvas.menu.template.trioHint": "3 agents, all wired",
+  "canvas.menu.template.council": "Model council",
+  "canvas.menu.template.councilHint": "orchestrator + Claude, Gemini, ChatGPT",
+
+  // Command palette: AI
+  "palette.ai.hub": "Open AI Hub",
+  "palette.ai.council": "AI Hub: ask several AIs at once (council)",
+  "palette.ai.feed": "AI Hub: show what the AIs say to each other",
+  "palette.ai.trio": "New Claude ⇄ Gemini ⇄ Codex (wired to each other)",
+  "palette.ai.councilTemplate": "New model council (orchestrator + 3 models)",
+  "palette.ai.add": (name: string) => `Add AI model: ${name}`,
+
+  // AI Hub
+  shortcut_toggle_ai_hub: "AI Hub",
+  "ai.hub.toolbar": (shortcut: string) => `AI Hub: keys, council, live feed (${shortcut})`,
+  "ai.hub.toolbarUnread": (count: number) =>
+    `${count} new message${count === 1 ? "" : "s"} between your AIs`,
+  "ai.hub.title": "AI Hub",
+  "ai.hub.subtitle":
+    "Every AI the canvas can talk to: keys and CLIs, a council, and the live feed",
+  "ai.hub.tab.connectors": "Connectors",
+  "ai.hub.connectorsIntro":
+    "Connect each AI once, then add it to the canvas or wire it to your agents. API keys are encrypted with your OS keyring and never leave this app. No key? Use the CLI: Claude Code, Gemini CLI and Codex work with your subscription login.",
+  "ai.hub.moreProviders": "More providers",
+  "ai.hub.keySaved": (hint: string) => `key saved ${hint}`,
+  "ai.hub.keyEnv": (name: string) => `key from $${name}`,
+  "ai.hub.noKeyNeeded": "no key needed",
+  "ai.hub.needsUrl": "set a server URL",
+  "ai.hub.noKey": "no API key",
+  "ai.hub.replaceKey": "Paste a new key to replace it",
+  "ai.hub.apiKeyFor": (name: string) => `${name} API key`,
+  "ai.hub.removeKey": "Remove saved key",
+  "ai.hub.getKey": "Get a key",
+  "ai.hub.cliChecking": "checking…",
+  "ai.hub.cliUnknown": "not checked yet",
+  "ai.hub.cliReady": (label: string, version: string) =>
+    `${label}${version ? ` · ${version}` : ""}`,
+  "ai.hub.cliMissing": (install: string) => `not installed: ${install}`,
+  "ai.hub.cliCheck": "Check the CLI again",
+  "ai.hub.serverUrl": "Server URL",
+  "ai.hub.serverDefault": "server default",
+  "ai.hub.defaultModel": "Default model",
+  "ai.hub.fetchModels": "Fetch the provider's model list",
+  "ai.hub.modelsFound": (count: number) =>
+    `${count} model${count === 1 ? "" : "s"} available: pick one in the field above`,
+  "ai.hub.testApi": "Test API",
+  "ai.hub.testCli": "Test CLI",
+  "ai.hub.addToCanvas": "Add to canvas",
+  "ai.hub.tab.council": "Council",
+  "ai.hub.copy": "Copy answer",
+  "ai.hub.council.intro":
+    "Ask several AIs the same question at once and compare their answers side by side. Then let one of them write a synthesis.",
+  "ai.hub.council.who": "Ask",
+  "ai.hub.council.noneReady":
+    "No AI is ready yet: add a key or install a CLI in Connectors.",
+  "ai.hub.council.switchTransport": "Switch between API and CLI",
+  "ai.hub.council.placeholder": "Your question… (⌘/Ctrl + Enter to send)",
+  "ai.hub.council.ask": (count: number) => `Ask ${count}`,
+  "ai.hub.council.synthesize": (name: string) => `Synthesize with ${name}`,
+  "ai.hub.council.synthesisTitle": "Synthesis",
+  "ai.hub.council.synthesisPrompt":
+    "Several AI models answered the same question. Write a short synthesis: where they agree, where they disagree, and the best combined answer. Use the language of the question.",
+  "ai.hub.tab.feed": "Feed",
+  "ai.hub.tab.feedUnread": (count: number) => `Feed (${count})`,
+  "ai.feed.filter": "Filter",
+  "ai.feed.filter.all": "All",
+  "ai.feed.filter.agents": "Agents ⇄",
+  "ai.feed.filter.models": "Models",
+  "ai.feed.filter.sources": "Sources",
+  "ai.feed.filter.errors": "Errors",
+  "ai.feed.search": "Search messages",
+  "ai.feed.clear": "Clear",
+  "ai.feed.expand": "Click to show all",
+  "ai.feed.kind.message": "message",
+  "ai.feed.kind.reply": "reply",
+  "ai.feed.kind.ask": "ask",
+  "ai.feed.kind.answer": "answer",
+  "ai.feed.kind.error": "error",
+  "ai.feed.kind.read": "read",
+  "ai.feed.kind.trigger": "trigger",
+  "ai.feed.kind.brief": "brief",
+  "ai.feed.emptyTitle": "No messages yet",
+  "ai.feed.emptyBody":
+    "Wire two agents with a pipeline (or use Templates ▸ Claude ⇄ Gemini ⇄ Codex) and ask one of them to talk to another. Every message, reply and model call shows up here live.",
+  "ai.feed.you": "You",
+  "ai.feed.noMatch": "No message matches this filter",
+  "ai.hub.insecure":
+    "This system has no keyring, so the key is stored unencrypted in a file only your user can read.",
 } as const;
 
 export type TranslationKey = keyof typeof en;

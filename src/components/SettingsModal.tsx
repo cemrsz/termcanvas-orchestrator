@@ -108,6 +108,7 @@ const SHORTCUT_GROUPS: Array<{
         labelKey: "shortcut_toggle_snapshot_history",
       },
       { key: "toggleHub", labelKey: "shortcut_toggle_hub" },
+      { key: "toggleAiHub", labelKey: "shortcut_toggle_ai_hub" },
     ],
   },
   {
@@ -976,6 +977,7 @@ export function SettingsModal({ onClose }: Props) {
                       options={[
                         { value: "zh", label: "中文" },
                         { value: "en", label: "English" },
+                        { value: "tr", label: "Türkçe" },
                       ]}
                       onChange={(v) => setLocale(v)}
                     />

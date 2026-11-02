@@ -49,15 +49,19 @@ import { SnapshotHistoryModal } from "./components/SnapshotHistoryModal";
 import { useSnapshotHistoryStore } from "./stores/snapshotHistoryStore";
 import { Hub } from "./components/Hub";
 import { CanvasManagerModal } from "./components/CanvasManagerModal";
+import { AiHubModal } from "./components/AiHub/AiHubModal";
 import { updateWindowTitle } from "./titleHelper";
 import { resolveTerminalWithRuntimeState } from "./stores/terminalRuntimeStateStore";
 import {
+  buildBridgeManifest,
   buildOrchestratorManifest,
   listOrchestrators,
 } from "./actions/orchestrationSceneActions";
 import { logSlowRendererPath } from "./utils/devPerf";
 import { selectAllTerminalRuntime } from "./terminal/terminalRuntimeStore";
 import { performContextualSelectAll } from "./utils/contextualSelectAll";
+import { startCommsSync } from "./stores/commsStore";
+import { readTerminalText } from "./terminal/terminalRegistry";
 
 function isSkipRestoreSnapshot(
   snapshot: ReturnType<typeof readWorkspaceSnapshot>,
@@ -288,6 +292,7 @@ export function App() {
     if (!window.termcanvas?.sessions) return;
     return initSessionStoreIPC();
   }, []);
+  useEffect(() => startCommsSync(), []);
 
   useEffect(() => {
     if (!window.termcanvas?.menu) return;
@@ -453,6 +458,12 @@ export function App() {
 
       getOrchestratorManifest: (orchestratorId: string) =>
         JSON.parse(JSON.stringify(buildOrchestratorManifest(orchestratorId))),
+
+      getBridgeManifest: (terminalId: string) =>
+        JSON.parse(JSON.stringify(buildBridgeManifest(terminalId))),
+
+      readTerminalText: (terminalId: string, maxLines?: number) =>
+        readTerminalText(terminalId, maxLines),
     };
 
     (window as any).__tcApi = api;
@@ -485,6 +496,7 @@ export function App() {
       <PinDetailDrawer />
       <Hub />
       <CanvasManagerModal />
+      <AiHubModal />
     </div>
   );
 }

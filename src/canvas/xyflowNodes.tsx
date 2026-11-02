@@ -22,15 +22,19 @@ import { rectIntersectsCanvasViewport } from "./viewportBounds";
 import { resolveCollisions } from "./collisionResolver";
 import {
   isAgentTerminalType,
+  pipePeers,
   useOrchestrationStore,
 } from "../stores/orchestrationStore";
+import { useT } from "../i18n/useT";
 import {
+  AgentPort,
   ORCHESTRATOR_COLOR,
-  OrchestrationInPort,
   OrchestratorOutPort,
   orchestrationNodeTypes,
   type SourceFlowNode,
 } from "./orchestrationFlow";
+import { TERMINAL_TYPE_CONFIG } from "../terminal/terminalTypeConfig";
+import { AiNode } from "./AiNode";
 
 const SNAP_GRID = 10;
 
@@ -87,23 +91,60 @@ function TerminalNode({ data }: NodeProps<TerminalFlowNode>) {
       [data.terminalId],
     ),
   );
-  const hasOrchestrators = useOrchestrationStore(
-    (state) => state.orchestratorIds.length > 0,
-  );
-  const wiredSummary = useOrchestrationStore(
+  const t = useT();
+  const wiredCounts = useOrchestrationStore(
     useCallback(
       (state) => {
         if (!state.orchestratorIds.includes(data.terminalId)) return "";
         let agents = 0;
+        let models = 0;
         let sources = 0;
         for (const link of state.links) {
           if (link.orchestratorId !== data.terminalId) continue;
           if (link.targetKind === "terminal") agents++;
+          else if (state.sources[link.targetId]?.kind === "ai") models++;
           else sources++;
         }
-        return `${agents} agent${agents === 1 ? "" : "s"} · ${sources} source${sources === 1 ? "" : "s"}`;
+        return `${agents}|${models}|${sources}`;
       },
       [data.terminalId],
+    ),
+  );
+  const wiredSummary = wiredCounts
+    ? t["canvas.badge.summary"](...(wiredCounts.split("|").map(Number) as [number, number, number]))
+    : "";
+  // Peers on pipelines, for the "⇄ Gemini, Codex" badge.
+  // "s:<name>" for source/AI peers (renames show at once), "t:<id>" for agents.
+  const pipePeerIds = useOrchestrationStore(
+    useCallback(
+      (state) =>
+        pipePeers(state.pipes, data.terminalId)
+          .map((id) => (state.sources[id] ? `s:${state.sources[id].name}` : `t:${id}`))
+          .join("|"),
+      [data.terminalId],
+    ),
+  );
+  const pipePeerNames = useProjectStore(
+    useCallback(
+      (state) => {
+        if (!pipePeerIds) return "";
+        return pipePeerIds
+          .split("|")
+          .map((entry) => {
+            if (entry.startsWith("s:")) return entry.slice(2);
+            const id = entry.slice(2);
+            for (const project of state.projects) {
+              for (const worktree of project.worktrees) {
+                const peer = worktree.terminals.find((candidate) => candidate.id === id);
+                if (peer) return peer.customTitle?.trim() || peer.title;
+              }
+            }
+            return null;
+          })
+          .filter(Boolean)
+          .join(", ");
+      },
+      [pipePeerIds],
     ),
   );
 
@@ -275,8 +316,10 @@ function TerminalNode({ data }: NodeProps<TerminalFlowNode>) {
     return null;
   }
 
-  const showInPort =
-    !isOrchestrator && hasOrchestrators && isAgentTerminalType(terminal.type);
+  // Every agent can be wired: to an orchestrator or to other agents.
+  const showAgentPort = !isOrchestrator && isAgentTerminalType(terminal.type);
+  const agentColor =
+    TERMINAL_TYPE_CONFIG[terminal.type]?.color ?? ORCHESTRATOR_COLOR;
 
   return (
     <div
@@ -304,13 +347,28 @@ function TerminalNode({ data }: NodeProps<TerminalFlowNode>) {
             }}
           >
             <span aria-hidden="true">◆</span>
-            ORCHESTRATOR
+            {t["canvas.badge.orchestrator"]}
             <span style={{ opacity: 0.8 }}>· {wiredSummary}</span>
           </div>
           <OrchestratorOutPort />
         </>
       )}
-      {showInPort && <OrchestrationInPort color={ORCHESTRATOR_COLOR} />}
+      {!isOrchestrator && pipePeerNames && (
+        <div
+          className="tc-caption pointer-events-none absolute left-0 flex max-w-full items-center gap-1.5 truncate whitespace-nowrap rounded-md border px-2 py-0.5 font-medium"
+          style={{
+            top: "calc(100% + 8px)",
+            color: agentColor,
+            borderColor: `color-mix(in srgb, ${agentColor} 45%, transparent)`,
+            background: `color-mix(in srgb, ${agentColor} 12%, var(--surface))`,
+          }}
+          title={t["canvas.badge.pipelineTitle"](pipePeerNames)}
+        >
+          <span aria-hidden="true">⇄</span>
+          {pipePeerNames}
+        </div>
+      )}
+      {showAgentPort && <AgentPort color={agentColor} />}
       <NodeResizer
         isVisible={hovered}
         minWidth={300}
@@ -341,6 +399,7 @@ function TerminalNode({ data }: NodeProps<TerminalFlowNode>) {
 export const xyflowNodeTypes = {
   terminal: TerminalNode,
   ...orchestrationNodeTypes,
+  aiModel: AiNode,
 } satisfies NodeTypes;
 
 export type AnyCanvasFlowNode = CanvasFlowNode | SourceFlowNode;

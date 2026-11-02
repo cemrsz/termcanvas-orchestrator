@@ -1,17 +1,22 @@
 /**
- * Orchestrator bridge — the files an orchestrator agent uses to drive the
- * agents and sources wired to it on the canvas.
+ * Bridge workspaces — the files an agent uses to reach what is wired to it
+ * on the canvas.
  *
- * For each orchestrator terminal we write, inside its worktree:
+ * Orchestrators get, inside their worktree:
  *   .termcanvas/orchestrator/<terminalId>/ORCHESTRATOR.md  (operating rules)
- *   .termcanvas/orchestrator/<terminalId>/tc.mjs           (CLI over the API)
+ *   .termcanvas/orchestrator/<terminalId>/tc.mjs           (bridge CLI)
  *
- * The CLI only talks to `/orchestrator/<id>/*`, so the orchestrator can
- * reach exactly what is wired to it and nothing else.
+ * Agents on a pipeline (Claude ↔ Gemini ↔ Codex…) get:
+ *   .termcanvas/bridge/<terminalId>/BRIDGE.md              (how to talk to peers)
+ *   .termcanvas/bridge/<terminalId>/tc.mjs                 (bridge CLI)
+ *
+ * The CLI only talks to `/bridge/<id>/*`, so an agent can reach exactly what
+ * is wired to it and nothing else.
  */
 
 import fs from "node:fs";
 import path from "node:path";
+import { buildBridgeScript } from "./bridge-script";
 
 export interface OrchestratorWorkspace {
   dir: string;
@@ -45,7 +50,11 @@ export function writeOrchestratorWorkspace(options: {
 
   fs.writeFileSync(
     scriptPath,
-    buildOrchestratorScript(options.terminalId, options.portFile),
+    buildBridgeScript({
+      terminalId: options.terminalId,
+      portFile: options.portFile,
+      role: "orchestrator",
+    }),
     "utf-8",
   );
   fs.writeFileSync(
@@ -61,6 +70,119 @@ export function writeOrchestratorWorkspace(options: {
     instructionsRelPath,
     scriptRelPath,
   };
+}
+
+export function getAgentBridgeRelDir(terminalId: string): string {
+  return `.termcanvas/bridge/${terminalId}`;
+}
+
+/** Files for an agent on a pipeline: BRIDGE.md and its own tc.mjs. */
+export function writeAgentBridgeWorkspace(options: {
+  terminalId: string;
+  worktreePath: string;
+  portFile: string;
+}): OrchestratorWorkspace {
+  const relDir = getAgentBridgeRelDir(options.terminalId);
+  const rootDir = path.join(options.worktreePath, ".termcanvas", "bridge");
+  const dir = path.join(rootDir, options.terminalId);
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(rootDir, ".gitignore"), "*\n", "utf-8");
+
+  const scriptRelPath = `${relDir}/tc.mjs`;
+  const instructionsRelPath = `${relDir}/BRIDGE.md`;
+  const scriptPath = path.join(dir, "tc.mjs");
+  const instructionsPath = path.join(dir, "BRIDGE.md");
+  fs.writeFileSync(
+    scriptPath,
+    buildBridgeScript({
+      terminalId: options.terminalId,
+      portFile: options.portFile,
+      role: "agent",
+    }),
+    "utf-8",
+  );
+  fs.writeFileSync(
+    instructionsPath,
+    buildAgentBridgeInstructions(scriptRelPath, scriptPath),
+    "utf-8",
+  );
+  return { dir, instructionsPath, scriptPath, instructionsRelPath, scriptRelPath };
+}
+
+/** Sent into an agent when it is first wired to peers. */
+export function buildPipelineBriefPrompt(
+  instructionsRelPath: string,
+  peers: { name: string; type: string }[],
+): string {
+  const list =
+    peers.length > 0
+      ? peers.map((peer) => `${peer.name} (${peer.type})`).join(", ")
+      : "other agents";
+  return (
+    `[TermCanvas] You are now wired by pipelines to: ${list}. ` +
+    `Read ${instructionsRelPath} now and follow it to talk to them when I ask ` +
+    "or when their help clearly serves my request. Reply with one short line."
+  );
+}
+
+function buildAgentBridgeInstructions(
+  scriptRelPath: string,
+  scriptAbsPath: string,
+): string {
+  const cli = `node ${scriptRelPath}`;
+  return `# TermCanvas pipelines
+
+You are an AI agent running in a terminal on the user's TermCanvas canvas.
+The user wired you with pipelines to other AI agents (for example Claude,
+Gemini and Codex, each in its own terminal) and maybe to AI models and data
+sources. Everything wired to you can be reached with this CLI. The user can
+rewire at any time, so run \`peers\` before you rely on the wiring.
+
+## Bridge CLI
+
+Run from the repository root (absolute path: \`${scriptAbsPath.replace(/\\/g, "/")}\`):
+
+\`\`\`
+${cli} peers                              who is wired to you: agents (1, 2…), models (M1…), sources (S1…)
+${cli} ask <agent|model> <text>           message an agent and wait for its reply, or ask a model
+${cli} send <agent> <text>                message an agent without waiting (then use wait)
+${cli} wait <agent> [--timeout 100]       wait for the agent's reply and print it
+${cli} reply <agent>                      print the agent's latest reply again
+${cli} consult <model> <text>             ask a wired AI model (Claude, Gemini, ChatGPT… over API or CLI)
+${cli} council <question> [--agents]      ask every wired model (and agent) the same question, compare
+${cli} broadcast <text>                   message every wired agent (then wait on each)
+${cli} discuss <p1,p2[,p3]> <topic> [--rounds 2]   let peers discuss in turns; prints the transcript
+${cli} source <S#|name> / trigger <S#|name>   read / trigger a wired data source
+\`\`\`
+
+Put flags after the text (\`council "…" --agents\`), or write the text to a
+file and pass \`--file\`. Models answer in one shot and cannot see files:
+include the code or data they need in the message.
+
+\`<agent>\` is the number from \`peers\`, the agent's name, its type
+(e.g. \`gemini\`) when only one of that type is wired, or its id. For long or
+multi-line text write it to a file under \`.termcanvas/\` and pass
+\`--file <path>\`. \`wait\` exit codes: 0 = reply printed, 2 = still working
+(run \`wait\` again), 3 = the agent waits for the user's approval in its
+own terminal.
+
+## Rules
+
+1. Talk to peers when the user asks you to, or when a peer's help clearly
+   serves the user's request. Do not chat for its own sake.
+2. Messages from peers arrive in your chat and start with
+   "[TermCanvas pipeline]". Answer them in your normal reply: the sender reads
+   your reply automatically. While answering, do not \`send\`/\`ask\` that
+   sender back (it is waiting for you); ask other peers if you need to.
+3. Peers do not see your conversation. Write self-contained messages: the
+   goal, the context, file paths, and the answer format you expect.
+4. You share the machine with your peers. Say which files you change and do
+   not edit a file a peer is working on.
+5. If a bridge command fails with a sandbox or network error, run it again
+   with escalated permissions: it only talks to TermCanvas on 127.0.0.1.
+6. Keep peer conversations short. Tell the user who said what, in the
+   language the user writes in.
+`;
 }
 
 export function buildOrchestratorStartPrompt(instructionsRelPath: string): string {
@@ -79,27 +201,35 @@ function buildOrchestratorInstructions(
   return `# TermCanvas Orchestrator
 
 You are the ORCHESTRATOR on the user's TermCanvas canvas. The user gives
-commands only to you. Worker agents (other Claude/Codex terminals) and data
-sources (Google Sheets, n8n webhooks, HTTP APIs, local files, notes) are wired
-to you on the canvas, like nodes in n8n. You can only use what is wired to you,
-and the user can rewire at any time, so check the wiring before each command.
+commands only to you. Worker agents (other Claude / Codex / Gemini
+terminals), AI models (Claude, Gemini, ChatGPT… nodes that answer over their
+API or CLI) and data sources (Google Sheets, n8n webhooks, HTTP APIs, local
+files, notes) are wired to you on the canvas, like nodes in n8n. You can only
+use what is wired to you, and the user can rewire at any time, so check the
+wiring before each command.
 
 ## Bridge CLI
 
 Run from the repository root (absolute path: \`${scriptAbsPath.replace(/\\/g, "/")}\`):
 
 \`\`\`
-${cli} status                          wired agents (number, name, state) and sources (S-number, kind, url, notes)
+${cli} status                          wired agents (number, name, state), models (M-number) and sources (S-number)
 ${cli} send <agent> <text>             give a task to an agent; use --file <path> for long or multi-line prompts
 ${cli} wait <agent> [--timeout 100]    wait for the agent's turn to end and print its final reply
-${cli} ask <agent> <text>|--file <p>   send, then wait
+${cli} ask <agent|model> <text>        agent: send, then wait; model: ask it and print the answer
 ${cli} reply <agent>                   print the agent's latest reply again
+${cli} consult <M#|name> <text>        ask a wired AI model (one shot, no tools, no files)
+${cli} council <question> [--models M1,M2] [--agents]   same question to several models/agents, answers side by side
+${cli} discuss <p1,p2[,p3]> <topic> [--rounds 2]         let models/agents debate in turns; prints the transcript
+${cli} broadcast <text>                give every wired agent the same message
 ${cli} source <S#|name> [--lines 200] [--query "status=Pending&limit=20"]
                                         read a source: sheet -> CSV rows, n8n/api -> GET response, file -> content, note -> text
 ${cli} trigger <S#|name> [--data '<json>' | --file payload.json]   POST JSON to an n8n/API source (actions)
 \`\`\`
 
-\`<agent>\` is the number from \`status\`, the agent's name, or its id.
+\`<agent>\` is the number from \`status\`, the agent's name, its type (e.g.
+\`gemini\`) when only one of that type is wired, or its id. Put flags after
+the text, or pass long text with \`--file\`.
 \`wait\` exit codes: 0 = done (reply printed), 2 = still working (run \`wait\`
 again), 3 = the agent is waiting for the user to approve something in its own
 terminal.
@@ -124,357 +254,15 @@ terminal.
    \`wait\` again once they say it is done.
 6. Do not do a worker's job yourself unless no fitting agent is wired; if
    something is missing, say so (e.g. "no agent for research is connected").
-7. Report back briefly: which agent did what, and the outcome. Reply in the
-   language the user writes in.
+7. Models are for thinking, not doing: second opinions, reviews of a diff
+   you paste in, brainstorming, translations, fact checks. They answer in one
+   shot and cannot see files, so include what they need. Use \`council\` when
+   the user wants several opinions, \`discuss\` when the user asks the AIs to
+   debate or agree on something. Agents do the actual work in the repository.
+8. Report back briefly: which agent or model did what, and the outcome. Reply
+   in the language the user writes in.
 `;
 }
-
-/**
- * The CLI is plain Node (no dependencies) so it runs from any agent shell.
- * Written without template literals so it can be embedded in String.raw.
- */
-function buildOrchestratorScript(orchestratorId: string, portFile: string): string {
-  const header =
-    "#!/usr/bin/env node\n" +
-    "// TermCanvas orchestrator bridge. Generated by TermCanvas; edits are overwritten.\n" +
-    `const ORCHESTRATOR_ID = ${JSON.stringify(orchestratorId)};\n` +
-    `const PORT_FILE = ${JSON.stringify(portFile)};\n`;
-  return header + ORCHESTRATOR_SCRIPT_BODY;
-}
-
-const ORCHESTRATOR_SCRIPT_BODY = String.raw`
-import fs from "node:fs";
-import path from "node:path";
-import http from "node:http";
-import { fileURLToPath } from "node:url";
-
-const BASE = "/orchestrator/" + encodeURIComponent(ORCHESTRATOR_ID);
-const DONE_STATES = new Set(["turn_complete", "turn_aborted"]);
-const ACTIVE_STATES = new Set(["thinking", "in_turn", "tool_running", "tool_pending"]);
-const STATE_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), ".state");
-const START_GRACE_MS = 30000;
-const MAX_PRINT_CHARS = 20000;
-
-function readPort() {
-  let raw;
-  try {
-    raw = fs.readFileSync(PORT_FILE, "utf-8");
-  } catch {
-    throw new Error("TermCanvas is not running (no port file at " + PORT_FILE + ")");
-  }
-  const port = parseInt(raw.split("\n")[0].trim(), 10);
-  if (!port) throw new Error("TermCanvas port file is empty: " + PORT_FILE);
-  return port;
-}
-
-function api(method, urlPath, body) {
-  return new Promise((resolve, reject) => {
-    const data = body === undefined ? undefined : JSON.stringify(body);
-    const headers = data
-      ? { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(data) }
-      : {};
-    const req = http.request(
-      { hostname: "127.0.0.1", port: readPort(), path: urlPath, method, headers, timeout: 30000 },
-      (res) => {
-        let text = "";
-        res.setEncoding("utf8");
-        res.on("data", (chunk) => (text += chunk));
-        res.on("end", () => {
-          let json;
-          try {
-            json = text ? JSON.parse(text) : {};
-          } catch {
-            json = { error: text };
-          }
-          if (res.statusCode >= 400) reject(new Error(json.error || "HTTP " + res.statusCode));
-          else resolve(json);
-        });
-      },
-    );
-    req.on("timeout", () => req.destroy(new Error("TermCanvas API timed out")));
-    req.on("error", reject);
-    if (data) req.write(data);
-    req.end();
-  });
-}
-
-function parseArgs(argv) {
-  const positional = [];
-  const flags = {};
-  for (let i = 0; i < argv.length; i++) {
-    const arg = argv[i];
-    if (arg.startsWith("--")) {
-      const key = arg.slice(2);
-      const next = argv[i + 1];
-      if (next !== undefined && !next.startsWith("--")) {
-        flags[key] = next;
-        i++;
-      } else {
-        flags[key] = true;
-      }
-    } else {
-      positional.push(arg);
-    }
-  }
-  return { positional, flags };
-}
-
-function truncate(text, max) {
-  if (text.length <= max) return text;
-  return text.slice(0, max) + "\n... [truncated " + (text.length - max) + " chars]";
-}
-
-function readTextArg(rest, flags) {
-  if (typeof flags.file === "string") return fs.readFileSync(flags.file, "utf-8");
-  const text = rest.join(" ");
-  if (!text.trim()) throw new Error("No text given. Pass the text or --file <path>.");
-  return text;
-}
-
-function sentMarkerPath(agentId) {
-  return path.join(STATE_DIR, agentId.replace(/[^A-Za-z0-9_-]/g, "_") + ".json");
-}
-
-function recordSent(agentId) {
-  fs.mkdirSync(STATE_DIR, { recursive: true });
-  fs.writeFileSync(sentMarkerPath(agentId), JSON.stringify({ sentAt: Date.now() }));
-}
-
-function readSentAt(agentId) {
-  try {
-    return JSON.parse(fs.readFileSync(sentMarkerPath(agentId), "utf-8")).sentAt || 0;
-  } catch {
-    return 0;
-  }
-}
-
-async function cmdStatus() {
-  const m = await api("GET", BASE);
-  const lines = [];
-  lines.push("Orchestrator: " + m.orchestrator.title + " (" + m.orchestrator.id + ")");
-  lines.push("");
-  lines.push("Agents wired to you (" + m.agents.length + "):");
-  if (m.agents.length === 0) lines.push("  (none - ask the user to wire agents to you on the canvas)");
-  m.agents.forEach((a, i) => {
-    lines.push(
-      "  " + (i + 1) + ". " + a.name + "  [" + a.type + "]  state=" + (a.turnState || a.status) +
-        (a.ptyId ? "" : "  (not running)") + "  id=" + a.id,
-    );
-  });
-  lines.push("");
-  lines.push("Sources wired to you (" + m.sources.length + "):");
-  if (m.sources.length === 0) lines.push("  (none)");
-  m.sources.forEach((s, i) => {
-    lines.push("  S" + (i + 1) + ". " + s.name + "  [" + s.kind + "]" + (s.url ? "  " + s.url : ""));
-    if (s.description) {
-      for (const line of s.description.split("\n")) lines.push("      " + line);
-    }
-  });
-  console.log(lines.join("\n"));
-}
-
-async function cmdSend(rest, flags) {
-  const agent = rest.shift();
-  if (!agent) throw new Error("Usage: send <agent> <text> | --file <path>");
-  const text = readTextArg(rest, flags);
-  const result = await api("POST", BASE + "/send", { agent, text });
-  recordSent(result.agent.id);
-  console.log("Sent to " + result.agent.name + " (" + result.agent.id + ").");
-  return result.agent;
-}
-
-async function cmdWait(rest, flags) {
-  const agentRef = rest.shift();
-  if (!agentRef) throw new Error("Usage: wait <agent> [--timeout 100]");
-  const timeoutMs = (parseInt(flags.timeout, 10) || 100) * 1000;
-  const deadline = Date.now() + timeoutMs;
-  let agentId = null;
-  let sentAt = 0;
-  while (true) {
-    const info = await api("GET", BASE + "/agent?agent=" + encodeURIComponent(agentRef));
-    const a = info.agent;
-    if (!agentId) {
-      agentId = a.id;
-      sentAt = readSentAt(agentId);
-    }
-    const state = a.turnState || "unknown";
-    const startedAt = a.turnStartedAt ? Date.parse(a.turnStartedAt) : 0;
-    const started =
-      !sentAt ||
-      startedAt >= sentAt - 2000 ||
-      ACTIVE_STATES.has(state) ||
-      Date.now() - sentAt > START_GRACE_MS;
-    if (started && DONE_STATES.has(state)) {
-      const r = await api("GET", BASE + "/reply?agent=" + encodeURIComponent(agentId));
-      console.log("[" + a.name + " finished: " + state + "]");
-      console.log(truncate(r.reply || "(no reply text found)", MAX_PRINT_CHARS));
-      return 0;
-    }
-    if (state === "awaiting_input") {
-      console.log(
-        "WAITING_FOR_APPROVAL: " + a.name + " is waiting for the user to approve or answer something in its terminal.",
-      );
-      process.exitCode = 3;
-      return 3;
-    }
-    if (!a.ptyId) {
-      throw new Error(a.name + " is not running. Ask the user to open or restart that terminal.");
-    }
-    if (Date.now() >= deadline) {
-      console.log("STILL_WORKING: " + a.name + " state=" + state + ". Run wait again.");
-      process.exitCode = 2;
-      return 2;
-    }
-    await new Promise((resolve) => setTimeout(resolve, 2500));
-  }
-}
-
-async function cmdReply(rest) {
-  const agentRef = rest.shift();
-  if (!agentRef) throw new Error("Usage: reply <agent>");
-  const r = await api("GET", BASE + "/reply?agent=" + encodeURIComponent(agentRef));
-  console.log("[" + r.agent.name + " state=" + (r.agent.turnState || "unknown") + "]");
-  console.log(truncate(r.reply || "(no reply text found)", MAX_PRINT_CHARS));
-}
-
-function resolveSource(manifest, ref) {
-  const sources = manifest.sources;
-  const m = /^S?(\d+)$/i.exec(ref);
-  if (m) {
-    const s = sources[parseInt(m[1], 10) - 1];
-    if (s) return s;
-  }
-  const lower = ref.toLowerCase();
-  const exact = sources.filter((s) => s.id === ref || s.name.toLowerCase() === lower);
-  if (exact.length === 1) return exact[0];
-  const partial = sources.filter((s) => s.name.toLowerCase().includes(lower));
-  if (partial.length === 1) return partial[0];
-  throw new Error(
-    "No single wired source matches '" + ref + "'. Wired: " +
-      (sources.map((s, i) => "S" + (i + 1) + " " + s.name).join(", ") || "none"),
-  );
-}
-
-function sheetCsvUrl(url) {
-  const m = /\/spreadsheets\/d\/([A-Za-z0-9_-]+)/.exec(url);
-  if (!m) return url;
-  const gid = /[#?&]gid=(\d+)/.exec(url);
-  return "https://docs.google.com/spreadsheets/d/" + m[1] + "/export?format=csv" + (gid ? "&gid=" + gid[1] : "");
-}
-
-function limitLines(text, maxLines) {
-  const lines = text.split(/\r?\n/);
-  if (lines.length <= maxLines) return text;
-  return lines.slice(0, maxLines).join("\n") + "\n... [" + (lines.length - maxLines) + " more lines, use --lines]";
-}
-
-async function cmdSource(rest, flags) {
-  const ref = rest.shift();
-  if (!ref) throw new Error("Usage: source <S#|name> [--lines 200] [--query \"k=v&k2=v2\"]");
-  const manifest = await api("GET", BASE);
-  const s = resolveSource(manifest, ref);
-  const maxLines = parseInt(flags.lines, 10) || 200;
-  console.log("[" + s.name + " - " + s.kind + "]");
-  if (s.description && s.kind !== "note") console.log("Notes: " + s.description);
-  if (s.kind === "note") {
-    console.log(s.description || "(empty note)");
-    return;
-  }
-  if (!s.url) throw new Error("Source '" + s.name + "' has no URL/path set on the canvas.");
-  if (s.kind === "file") {
-    const stat = fs.statSync(s.url);
-    if (stat.isDirectory()) {
-      console.log(fs.readdirSync(s.url).join("\n"));
-    } else {
-      console.log(truncate(limitLines(fs.readFileSync(s.url, "utf-8"), maxLines), MAX_PRINT_CHARS));
-    }
-    return;
-  }
-  let target = s.kind === "sheet" ? sheetCsvUrl(s.url) : s.url;
-  if (typeof flags.query === "string" && flags.query && s.kind !== "sheet") {
-    target += (target.includes("?") ? "&" : "?") + flags.query.replace(/^\?/, "");
-  }
-  const res = await fetch(target, { redirect: "follow" });
-  const body = await res.text();
-  const type = res.headers.get("content-type") || "";
-  if (s.kind === "sheet" && (type.includes("text/html") || !res.ok)) {
-    throw new Error(
-      "Could not read the sheet as CSV (HTTP " + res.status + "). Share it as 'Anyone with the link: Viewer', " +
-        "or wire an n8n webhook source that reads it.",
-    );
-  }
-  if (s.kind === "n8n" && res.status === 404 && body.includes("not registered")) {
-    throw new Error(
-      "This n8n webhook does not accept GET (or its workflow is not published). " +
-        "If it is an action webhook, use: trigger " + ref + " --data '<json>'",
-    );
-  }
-  if (!res.ok) console.log("HTTP " + res.status);
-  console.log(truncate(limitLines(body, maxLines), MAX_PRINT_CHARS));
-}
-
-async function cmdTrigger(rest, flags) {
-  const ref = rest.shift();
-  if (!ref) throw new Error("Usage: trigger <S#|name> [--data '<json>' | --file payload.json]");
-  const manifest = await api("GET", BASE);
-  const s = resolveSource(manifest, ref);
-  if (!s.url) throw new Error("Source '" + s.name + "' has no URL set on the canvas.");
-  if (s.kind === "file" || s.kind === "note") throw new Error("Source '" + s.name + "' cannot be triggered.");
-  let payload = {};
-  if (typeof flags.file === "string") payload = JSON.parse(fs.readFileSync(flags.file, "utf-8"));
-  else if (typeof flags.data === "string") payload = JSON.parse(flags.data);
-  const res = await fetch(s.url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  });
-  const body = await res.text();
-  console.log("[" + s.name + "] HTTP " + res.status);
-  console.log(truncate(body, MAX_PRINT_CHARS));
-  if (!res.ok) process.exitCode = 1;
-}
-
-const HELP = [
-  "TermCanvas orchestrator bridge",
-  "  status",
-  "  send <agent> <text> | --file <path>",
-  "  wait <agent> [--timeout 100]",
-  "  ask <agent> <text> | --file <path> [--timeout 100]",
-  "  reply <agent>",
-  "  source <S#|name> [--lines 200] [--query \"k=v&k2=v2\"]",
-  "  trigger <S#|name> [--data '<json>' | --file payload.json]",
-].join("\n");
-
-async function main() {
-  const [command, ...argv] = process.argv.slice(2);
-  const { positional, flags } = parseArgs(argv);
-  switch (command) {
-    case "status":
-      return cmdStatus();
-    case "send":
-      return cmdSend(positional, flags);
-    case "wait":
-      return cmdWait(positional, flags);
-    case "ask": {
-      const agent = await cmdSend(positional, flags);
-      return cmdWait([agent.id], flags);
-    }
-    case "reply":
-      return cmdReply(positional);
-    case "source":
-      return cmdSource(positional, flags);
-    case "trigger":
-      return cmdTrigger(positional, flags);
-    default:
-      console.log(HELP);
-  }
-}
-
-main().catch((err) => {
-  console.error("Error: " + (err && err.message ? err.message : String(err)));
-  process.exitCode = 1;
-});
-`;
 
 const ANSI_PATTERN =
   // eslint-disable-next-line no-control-regex

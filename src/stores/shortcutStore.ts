@@ -22,6 +22,7 @@ export interface ShortcutMap {
   toggleActivityHeatmap: string;
   toggleSnapshotHistory: string;
   toggleHub: string;
+  toggleAiHub: string;
   nextCanvas: string;
   prevCanvas: string;
   openCanvasManager: string;
@@ -48,6 +49,7 @@ const LEGACY_DEFAULT_SHORTCUTS: ShortcutMap = {
   toggleActivityHeatmap: "mod+shift+a",
   toggleSnapshotHistory: "mod+shift+t",
   toggleHub: "mod+shift+j",
+  toggleAiHub: "mod+shift+y",
   nextCanvas: "mod+shift+]",
   prevCanvas: "mod+shift+[",
   openCanvasManager: "mod+shift+n",
@@ -74,6 +76,7 @@ const ALT_DEFAULT_SHORTCUTS: ShortcutMap = {
   toggleActivityHeatmap: "alt+shift+a",
   toggleSnapshotHistory: "alt+shift+t",
   toggleHub: "alt+shift+j",
+  toggleAiHub: "alt+shift+y",
   nextCanvas: "alt+shift+]",
   prevCanvas: "alt+shift+[",
   openCanvasManager: "alt+shift+n",

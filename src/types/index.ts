@@ -11,6 +11,15 @@ import type {
 } from "../../shared/render-diagnostics";
 import type { SessionHistoryChangedEvent } from "../../shared/sessions";
 import type {
+  AiCliStatus,
+  AiConnectorId,
+  AiConnectorStatus,
+  AiErrorCode,
+  AiInvokeOutcome,
+  AiInvokeRequest,
+} from "../../shared/ai-connectors";
+import type { CommsEntry, CommsParty } from "../../shared/comms";
+import type {
   Pin,
   PinLink,
   PinStatus,
@@ -980,6 +989,47 @@ export interface TermCanvasAPI {
   composer: {
     submit: (request: ComposerSubmitRequest) => Promise<ComposerSubmitResult>;
   };
+  ai: {
+    status: () => Promise<AiConnectorStatus[]>;
+    setKey: (id: AiConnectorId, key: string) => Promise<AiConnectorStatus>;
+    clearKey: (id: AiConnectorId) => Promise<AiConnectorStatus>;
+    setConfig: (
+      id: AiConnectorId,
+      patch: { model?: string | null; baseURL?: string | null },
+    ) => Promise<AiConnectorStatus>;
+    checkCli: (id: AiConnectorId) => Promise<AiCliStatus>;
+    listModels: (
+      id: AiConnectorId,
+      baseURL?: string,
+    ) => Promise<
+      | { ok: true; models: string[] }
+      | { ok: false; code: AiErrorCode; error: string }
+    >;
+    /** `log` puts the call in the comms feed as asked by the user. */
+    invoke: (
+      request: AiInvokeRequest,
+      log?: { to: CommsParty; label?: string },
+    ) => Promise<AiInvokeOutcome>;
+  };
+  comms: {
+    list: (limit?: number) => Promise<CommsEntry[]>;
+    clear: () => Promise<void>;
+    /** Put "TermCanvas briefed <agent> about its pipelines" in the feed. */
+    recordBrief?: (to: CommsParty, text: string) => Promise<void>;
+    onEntry: (callback: (entry: CommsEntry) => void) => () => void;
+  };
+  bridge: {
+    /** Write an agent's BRIDGE.md + tc.mjs and get the brief to send it. */
+    prepare: (
+      terminalId: string,
+      worktreePath: string,
+      peers: { name: string; type: string }[],
+    ) => Promise<{
+      instructionsRelPath: string;
+      scriptRelPath: string;
+      briefPrompt: string;
+    }>;
+  };
   orchestrator: {
     prepare: (
       terminalId: string,
@@ -1017,7 +1067,7 @@ export interface TermCanvasAPI {
       sessionType: "claude" | "codex";
       cwd: string;
       summaryCli: "claude" | "codex";
-      locale: "en" | "zh";
+      locale: "en" | "zh" | "tr";
     }) => Promise<{
       ok: boolean;
       summary?: string;

@@ -143,6 +143,10 @@ export const TERMINAL_CONFIG: Record<TerminalType, TerminalAdapterConfig> = {
       shell: "gemini",
       resumeArgs: (id) => ["--resume", id],
       newArgs: () => [],
+      autoApproveArgs: () => ["--yolo"],
+      // A bare positional prompt runs Gemini CLI once and exits; keep the
+      // session interactive so it stays on the canvas (and on pipelines).
+      promptArgs: (prompt) => ["--prompt-interactive", prompt],
     },
     composer: {
       supportsComposer: true,

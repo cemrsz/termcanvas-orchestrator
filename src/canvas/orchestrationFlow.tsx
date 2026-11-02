@@ -14,17 +14,22 @@ import {
   FileText,
   Globe,
   Sheet,
+  Sparkles,
   StickyNote,
   Workflow,
   X,
   type LucideIcon,
 } from "lucide-react";
 import { useOrchestrationStore } from "../stores/orchestrationStore";
+import { useWirePulseFrom } from "../stores/commsStore";
 import type {
   OrchestrationLink,
+  OrchestrationPipe,
   OrchestrationSource,
   OrchestrationSourceKind,
+  OrchestrationTargetKind,
 } from "../types/orchestration";
+import { getAiConnector } from "../../shared/ai-connectors";
 
 /** Handle ids are `<prefix>-left` / `<prefix>-right`. */
 export const ORCHESTRATOR_OUT_HANDLE = "orchestrator-out";
@@ -80,6 +85,13 @@ export const SOURCE_KIND_META: Record<
     urlPlaceholder: "",
     notesPlaceholder: "Context or rules for the orchestrator, e.g. brand voice",
   },
+  ai: {
+    label: "AI Model",
+    color: "var(--accent)",
+    icon: Sparkles,
+    urlPlaceholder: "Server URL (optional)",
+    notesPlaceholder: "Role, e.g. strict code reviewer; answer in bullet points",
+  },
 };
 
 export interface SourceNodeData {
@@ -87,14 +99,14 @@ export interface SourceNodeData {
   [key: string]: unknown;
 }
 
-export type SourceFlowNode = Node<SourceNodeData, "orchestrationSource">;
+export type SourceFlowNode = Node<SourceNodeData, "orchestrationSource" | "aiModel">;
 
 export function buildSourceFlowNodes(
   sources: Record<string, OrchestrationSource>,
 ): SourceFlowNode[] {
   return Object.values(sources).map((source) => ({
     id: source.id,
-    type: "orchestrationSource",
+    type: source.kind === "ai" ? "aiModel" : "orchestrationSource",
     position: { x: source.x, y: source.y },
     data: { sourceId: source.id },
     style: { width: source.w },
@@ -144,21 +156,104 @@ export function OrchestratorOutPort() {
 }
 
 /** Input ports of a worker agent tile or a source node. */
-export function OrchestrationInPort({ color }: { color: string }) {
+export function OrchestrationInPort({
+  color,
+  title,
+  type = "target",
+}: {
+  color: string;
+  title?: string;
+  type?: "source" | "target";
+}) {
   return (
     <>
       {(["left", "right"] as const).map((side) => (
         <Handle
           key={side}
-          type="target"
+          type={type}
           id={`${ORCHESTRATION_IN_HANDLE}-${side}`}
           position={side === "left" ? Position.Left : Position.Right}
           className="nodrag nopan"
           style={portStyle(color, side)}
+          title={title}
         />
       ))}
     </>
   );
+}
+
+/**
+ * Ports of an agent tile (Claude, Gemini, Codex…). Every agent has them:
+ * an orchestrator wires its workers here, and two agents wired port to
+ * port get a pipeline they can both talk over.
+ */
+export function AgentPort({ color }: { color: string }) {
+  // "source" so a pipeline edge can start at an agent (the canvas runs in
+  // loose connection mode, where any port can also end a wire).
+  return (
+    <OrchestrationInPort
+      color={color}
+      type="source"
+      title="Drag to another agent or an AI node to wire a pipeline"
+    />
+  );
+}
+
+export type WireIntent =
+  | {
+      kind: "link";
+      orchestratorId: string;
+      targetKind: OrchestrationTargetKind;
+      targetId: string;
+    }
+  | { kind: "pipe"; a: string; b: string };
+
+/**
+ * What a wire dragged between two ports means, whichever way it was drawn:
+ * orchestrator ↔ agent/source is a link; agent ↔ agent/source is a pipeline.
+ * Returns null for wires that make no sense (shell ends, two sources, two
+ * orchestrators, a node to itself).
+ */
+export function resolveWireIntent(
+  connection: {
+    source: string | null;
+    target: string | null;
+    sourceHandle?: string | null;
+    targetHandle?: string | null;
+  },
+  context: {
+    orchestratorIds: string[];
+    sources: Record<string, unknown>;
+    isAgent: (nodeId: string) => boolean;
+  },
+): WireIntent | null {
+  const { source, target } = connection;
+  if (!source || !target || source === target) return null;
+  const ours = (handle: string | null | undefined) =>
+    isOrchestratorOutHandle(handle) || isOrchestrationInHandle(handle);
+  if (!ours(connection.sourceHandle) || !ours(connection.targetHandle)) return null;
+
+  const sourceIsOrchestrator = context.orchestratorIds.includes(source);
+  const targetIsOrchestrator = context.orchestratorIds.includes(target);
+  if (sourceIsOrchestrator && targetIsOrchestrator) return null;
+  if (sourceIsOrchestrator || targetIsOrchestrator) {
+    const orchestratorId = sourceIsOrchestrator ? source : target;
+    const other = sourceIsOrchestrator ? target : source;
+    if (other in context.sources) {
+      return { kind: "link", orchestratorId, targetKind: "source", targetId: other };
+    }
+    if (context.isAgent(other)) {
+      return { kind: "link", orchestratorId, targetKind: "terminal", targetId: other };
+    }
+    return null;
+  }
+
+  const sourceIsNode = source in context.sources;
+  const targetIsNode = target in context.sources;
+  if (sourceIsNode && targetIsNode) return null;
+  if (!sourceIsNode && !context.isAgent(source)) return null;
+  if (!targetIsNode && !context.isAgent(target)) return null;
+  return { kind: "pipe", a: source, b: target };
 }
 
 export function isOrchestratorOutHandle(id: string | null | undefined) {
@@ -283,6 +378,33 @@ function SourceNode({ data }: NodeProps<SourceFlowNode>) {
   );
 }
 
+/**
+ * A glowing dot travelling along a wire while a message crosses it, from
+ * the sender's end to the receiver's.
+ */
+function WirePulse({
+  path,
+  color,
+  reverse,
+}: {
+  path: string;
+  color: string;
+  reverse: boolean;
+}) {
+  return (
+    <circle r={4} fill={color} className="tc-wire-pulse" pointerEvents="none">
+      <animateMotion
+        dur="1.1s"
+        repeatCount="indefinite"
+        path={path}
+        keyPoints={reverse ? "1;0" : "0;1"}
+        keyTimes="0;1"
+        calcMode="linear"
+      />
+    </circle>
+  );
+}
+
 export interface OrchestrationEdgeData {
   linkId: string;
   color: string;
@@ -294,6 +416,8 @@ export type OrchestrationFlowEdge = Edge<OrchestrationEdgeData, "orchestration">
 
 function OrchestrationEdge({
   id,
+  source,
+  target,
   sourceX,
   sourceY,
   targetX,
@@ -313,6 +437,7 @@ function OrchestrationEdge({
     targetPosition,
   });
   const color = data?.color ?? "var(--accent)";
+  const pulseFrom = useWirePulseFrom(source, target);
 
   return (
     <>
@@ -322,11 +447,14 @@ function OrchestrationEdge({
         className={data?.busy ? "tc-orchestration-edge-busy" : undefined}
         style={{
           stroke: color,
-          strokeWidth: hovered ? 3 : 2,
-          opacity: hovered ? 1 : 0.8,
+          strokeWidth: hovered || pulseFrom ? 3 : 2,
+          opacity: hovered || pulseFrom ? 1 : 0.8,
         }}
         interactionWidth={18}
       />
+      {pulseFrom && (
+        <WirePulse path={path} color={color} reverse={pulseFrom === target} />
+      )}
       {/* Invisible wide path to drive hover without blocking the canvas. */}
       <path
         d={path}
@@ -405,10 +533,181 @@ export function buildOrchestrationEdges(options: {
   return edges;
 }
 
+export interface PipeEdgeData {
+  pipeId: string;
+  /** Colors of the two ends, for the gradient. */
+  sourceColor: string;
+  targetColor: string;
+  busy: boolean;
+  [key: string]: unknown;
+}
+
+export type PipeFlowEdge = Edge<PipeEdgeData, "pipe">;
+
+/**
+ * A pipeline between two agents (or an agent and an AI/source node): drawn
+ * in a gradient from one end's color to the other's, with ⇄ in the middle
+ * that turns into × on hover to cut the wire.
+ */
+function PipeEdge({
+  id,
+  source,
+  target,
+  sourceX,
+  sourceY,
+  targetX,
+  targetY,
+  sourcePosition,
+  targetPosition,
+  data,
+}: EdgeProps<PipeFlowEdge>) {
+  const [hovered, setHovered] = useState(false);
+  const disconnectPipe = useOrchestrationStore((state) => state.disconnectPipe);
+  const [path, labelX, labelY] = getBezierPath({
+    sourceX,
+    sourceY,
+    sourcePosition,
+    targetX,
+    targetY,
+    targetPosition,
+  });
+  const gradientId = `tc-pipe-gradient-${id}`;
+  const sourceColor = data?.sourceColor ?? "var(--accent)";
+  const targetColor = data?.targetColor ?? "var(--accent)";
+  const pulseFrom = useWirePulseFrom(source, target);
+
+  return (
+    <>
+      <defs>
+        <linearGradient
+          id={gradientId}
+          gradientUnits="userSpaceOnUse"
+          x1={sourceX}
+          y1={sourceY}
+          x2={targetX}
+          y2={targetY}
+        >
+          <stop offset="0%" stopColor={sourceColor} />
+          <stop offset="100%" stopColor={targetColor} />
+        </linearGradient>
+      </defs>
+      <BaseEdge
+        id={id}
+        path={path}
+        className={data?.busy ? "tc-orchestration-edge-busy" : undefined}
+        style={{
+          stroke: `url(#${gradientId})`,
+          strokeWidth: hovered || pulseFrom ? 3.5 : 2.5,
+          opacity: hovered || pulseFrom ? 1 : 0.85,
+        }}
+        interactionWidth={18}
+      />
+      {pulseFrom && (
+        <WirePulse
+          path={path}
+          color={pulseFrom === target ? targetColor : sourceColor}
+          reverse={pulseFrom === target}
+        />
+      )}
+      <path
+        d={path}
+        fill="none"
+        stroke="transparent"
+        strokeWidth={18}
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
+      />
+      <EdgeLabelRenderer>
+        <button
+          type="button"
+          className="nodrag nopan absolute flex h-5 min-w-5 items-center justify-center rounded-full border bg-[var(--surface)] px-1 text-[11px] leading-none text-[var(--text-secondary)] hover:text-[var(--red)]"
+          style={{
+            transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)`,
+            pointerEvents: "all",
+            borderColor: hovered ? "var(--red)" : "var(--border-hover)",
+            opacity: hovered ? 1 : 0.8,
+          }}
+          title="Pipeline: both ends can talk to each other. Click to cut."
+          aria-label="Cut pipeline"
+          onMouseEnter={() => setHovered(true)}
+          onMouseLeave={() => setHovered(false)}
+          onClick={(e) => {
+            e.stopPropagation();
+            if (data?.pipeId) disconnectPipe(data.pipeId);
+          }}
+        >
+          {hovered ? <X size={10} strokeWidth={2} /> : <span aria-hidden="true">⇄</span>}
+        </button>
+      </EdgeLabelRenderer>
+    </>
+  );
+}
+
+/** Color of any canvas node for wires: agent color, connector or source kind. */
+export function nodeWireColor(
+  nodeId: string,
+  sources: Record<string, OrchestrationSource>,
+  terminalColors: Map<string, string>,
+): string {
+  const source = sources[nodeId];
+  if (source) {
+    if (source.kind === "ai" && source.ai) {
+      return getAiConnector(source.ai.connector)?.color ?? SOURCE_KIND_META.ai.color;
+    }
+    return (SOURCE_KIND_META[source.kind] ?? SOURCE_KIND_META.note).color;
+  }
+  return terminalColors.get(nodeId) ?? "var(--accent)";
+}
+
+export function buildPipeEdges(options: {
+  pipes: OrchestrationPipe[];
+  sources: Record<string, OrchestrationSource>;
+  terminalRects: Map<string, NodeRect>;
+  terminalColors: Map<string, string>;
+  busyTerminalIds: Set<string>;
+}): PipeFlowEdge[] {
+  const edges: PipeFlowEdge[] = [];
+  const rectOf = (nodeId: string): NodeRect | undefined => {
+    const terminal = options.terminalRects.get(nodeId);
+    if (terminal) return terminal;
+    const source = options.sources[nodeId];
+    return source ? { x: source.x, y: source.y, w: source.w } : undefined;
+  };
+  for (const pipe of options.pipes) {
+    // An edge starts at an agent: agent ports are the "source" handles.
+    const [from, to] = options.terminalRects.has(pipe.a)
+      ? [pipe.a, pipe.b]
+      : [pipe.b, pipe.a];
+    const fromRect = options.terminalRects.get(from);
+    const toRect = rectOf(to);
+    if (!fromRect || !toRect) continue;
+    const [outSide, inSide] = facingSides(fromRect, toRect);
+    edges.push({
+      id: pipe.id,
+      type: "pipe",
+      source: from,
+      sourceHandle: `${ORCHESTRATION_IN_HANDLE}-${outSide}`,
+      target: to,
+      targetHandle: `${ORCHESTRATION_IN_HANDLE}-${inSide}`,
+      data: {
+        pipeId: pipe.id,
+        sourceColor: nodeWireColor(from, options.sources, options.terminalColors),
+        targetColor: nodeWireColor(to, options.sources, options.terminalColors),
+        busy:
+          options.busyTerminalIds.has(from) || options.busyTerminalIds.has(to),
+      },
+      selectable: false,
+      focusable: false,
+    });
+  }
+  return edges;
+}
+
 export const orchestrationNodeTypes = {
   orchestrationSource: SourceNode,
 };
 
 export const orchestrationEdgeTypes = {
   orchestration: OrchestrationEdge,
+  pipe: PipeEdge,
 };

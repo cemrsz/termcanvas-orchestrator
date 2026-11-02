@@ -585,6 +585,30 @@ a.tc-kbd:active {
     stroke-dashoffset: -12;
   }
 }
+.tc-ai-node-thinking {
+  animation: tc-ai-thinking 1.6s ease-in-out infinite;
+}
+@keyframes tc-ai-thinking {
+  50% {
+    box-shadow:
+      0 0 0 1px var(--tc-ai-color),
+      0 0 36px color-mix(in srgb, var(--tc-ai-color) 60%, transparent);
+  }
+}
+.tc-xyflow .tc-wire-pulse {
+  filter: drop-shadow(0 0 4px currentColor) drop-shadow(0 0 2px #fff8);
+}
+@media (prefers-reduced-motion: reduce) {
+  .tc-xyflow .tc-wire-pulse {
+    display: none;
+  }
+  .tc-ai-node-thinking {
+    animation: none;
+  }
+  .tc-xyflow .tc-orchestration-edge-busy {
+    animation: none;
+  }
+}
 .tc-xyflow .react-flow__handle.connectingto,
 .tc-xyflow .react-flow__handle.valid {
   transform: scale(1.35);

@@ -59,8 +59,22 @@ import {
 } from "./composer-submit";
 import {
   buildOrchestratorStartPrompt,
+  buildPipelineBriefPrompt,
+  writeAgentBridgeWorkspace,
   writeOrchestratorWorkspace,
 } from "./orchestrator-bridge";
+import { AiConnectorService } from "./ai-connector-service";
+import { AiConnectorError } from "./ai-connector-http";
+import { runResolvedProcess } from "./ai-connector-cli";
+import { CommsLog } from "./comms-log";
+import { USER_PARTY, type CommsParty } from "../shared/comms";
+import {
+  isAiConnectorId,
+  isAiTransport,
+  type AiConnectorId,
+  type AiInvokeOutcome,
+  type AiInvokeRequest,
+} from "../shared/ai-connectors";
 import {
   collectUsage,
   collectUsageRange,
@@ -323,12 +337,95 @@ taskStore.on("pin:removed", (payload: { id: string; repo: string }) => {
   sendToWindow(mainWindow, "pin:event", { type: "pin:removed", ...payload });
 });
 
+/** Login-shell environment for API keys and provider CLIs. */
+async function getLoginShellEnv(): Promise<Record<string, string | undefined>> {
+  try {
+    const spec = await buildLaunchSpec({ cwd: os.homedir() });
+    return { ...process.env, ...spec.env };
+  } catch {
+    return { ...process.env };
+  }
+}
+
+const PROVIDER_CLI_ENV = {
+  // Hooks of a one-shot CLI must not report into a canvas terminal.
+  TERMCANVAS_SOCKET: undefined,
+  TERMCANVAS_TERMINAL_ID: undefined,
+  TERMCANVAS_TERMINAL_TYPE: undefined,
+  NO_COLOR: "1",
+  FORCE_COLOR: "0",
+};
+
+const aiConnectorService = new AiConnectorService({
+  configPath: path.join(TERMCANVAS_DIR, "ai-connectors.json"),
+  encryptionAvailable: () => safeStorage.isEncryptionAvailable(),
+  encrypt: (plaintext) =>
+    safeStorage.encryptString(plaintext).toString("base64"),
+  decrypt: (ciphertext) =>
+    safeStorage.decryptString(Buffer.from(ciphertext, "base64")),
+  getEnv: getLoginShellEnv,
+  // Chromium's network stack honours the user's proxy settings.
+  fetch: ((input: string, init?: RequestInit) =>
+    net.fetch(input, init)) as unknown as typeof fetch,
+  resolveCli: async (command) => {
+    try {
+      const spec = await buildLaunchSpec({ cwd: os.homedir(), shell: command });
+      // Windows batch shims run through cmd.exe /d /s /c <file>.
+      return /cmd(\.exe)?$/i.test(spec.file) && spec.args[3]
+        ? spec.args[3]
+        : spec.file;
+    } catch {
+      return null;
+    }
+  },
+  runCli: async (command, args, options) => {
+    const spec = await buildLaunchSpec({
+      cwd: options.cwd,
+      shell: command,
+      args,
+      envOverrides: PROVIDER_CLI_ENV,
+    });
+    return runResolvedProcess(spec.file, spec.args, {
+      cwd: spec.cwd,
+      env: spec.env,
+      stdin: options.stdin,
+      timeoutMs: options.timeoutMs,
+    });
+  },
+  now: () => Date.now(),
+  tmpDir: () => os.tmpdir(),
+});
+
+const commsLog = new CommsLog();
+commsLog.subscribe((entry) => {
+  sendToWindow(mainWindow, "comms:entry", entry);
+});
+
+function toAiErrorOutcome(error: unknown): Extract<AiInvokeOutcome, { ok: false }> {
+  if (error instanceof AiConnectorError) {
+    return { ok: false, code: error.code, error: error.message };
+  }
+  return {
+    ok: false,
+    code: "unknown",
+    error: error instanceof Error ? error.message : String(error),
+  };
+}
+
+function requireConnectorId(id: unknown): AiConnectorId {
+  if (!isAiConnectorId(id)) throw new Error(`Unknown AI connector: ${String(id)}`);
+  return id;
+}
+
 const apiServer = new ApiServer({
   getWindow: () => mainWindow,
   ptyManager,
   projectScanner,
   telemetryService,
   taskStore,
+  portFile: PORT_FILE,
+  ai: aiConnectorService,
+  comms: commsLog,
 });
 
 function openPinPreviewWindow(repo: string, pinId: string): void {
@@ -1844,6 +1941,154 @@ function setupIpc() {
           error: err instanceof Error ? err.message : String(err),
         };
       }
+    },
+  );
+
+  ipcMain.handle("ai:status", () => aiConnectorService.status());
+  ipcMain.handle("ai:set-key", (_event, id: unknown, key: unknown) => {
+    const connector = requireConnectorId(id);
+    aiConnectorService.setKey(connector, typeof key === "string" ? key : "");
+    return aiConnectorService.statusOf(connector);
+  });
+  ipcMain.handle("ai:clear-key", (_event, id: unknown) => {
+    const connector = requireConnectorId(id);
+    aiConnectorService.clearKey(connector);
+    return aiConnectorService.statusOf(connector);
+  });
+  ipcMain.handle(
+    "ai:set-config",
+    (
+      _event,
+      id: unknown,
+      patch: { model?: string | null; baseURL?: string | null } | null,
+    ) => {
+      const connector = requireConnectorId(id);
+      aiConnectorService.setConfig(connector, {
+        ...(patch && "model" in patch ? { model: patch.model ?? null } : {}),
+        ...(patch && "baseURL" in patch ? { baseURL: patch.baseURL ?? null } : {}),
+      });
+      return aiConnectorService.statusOf(connector);
+    },
+  );
+  ipcMain.handle("ai:check-cli", (_event, id: unknown) =>
+    aiConnectorService.checkCli(requireConnectorId(id)),
+  );
+  ipcMain.handle(
+    "ai:list-models",
+    async (_event, id: unknown, baseURL?: string) => {
+      try {
+        const models = await aiConnectorService.listModels(
+          requireConnectorId(id),
+          typeof baseURL === "string" ? baseURL : undefined,
+        );
+        return { ok: true as const, models };
+      } catch (error) {
+        return toAiErrorOutcome(error);
+      }
+    },
+  );
+  ipcMain.handle(
+    "ai:invoke",
+    async (
+      _event,
+      request: AiInvokeRequest,
+      log?: { to?: CommsParty; label?: string },
+    ): Promise<AiInvokeOutcome> => {
+      // Calls made from the UI (AI Hub, node test) show up in the feed too.
+      const model = log?.to;
+      const correlationId = model
+        ? `hub-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`
+        : undefined;
+      if (model) {
+        commsLog.record({
+          kind: "ask",
+          from: USER_PARTY,
+          to: model,
+          text: request?.prompt ?? "",
+          correlationId,
+          meta: { label: log?.label, transport: request?.transport, via: "hub" },
+        });
+      }
+      try {
+        if (!request || !isAiTransport(request.transport)) {
+          throw new Error("transport must be api or cli");
+        }
+        const result = await aiConnectorService.invoke({
+          ...request,
+          connector: requireConnectorId(request.connector),
+        });
+        if (model) {
+          commsLog.record({
+            kind: "answer",
+            from: model,
+            to: USER_PARTY,
+            text: result.text,
+            correlationId,
+            meta: {
+              label: log?.label,
+              latencyMs: result.latencyMs,
+              inputTokens: result.usage?.inputTokens,
+              outputTokens: result.usage?.outputTokens,
+              model: result.model,
+              transport: result.transport,
+              via: "hub",
+            },
+          });
+        }
+        return { ok: true, ...result };
+      } catch (error) {
+        const outcome = toAiErrorOutcome(error);
+        if (model) {
+          commsLog.record({
+            kind: "error",
+            from: model,
+            to: USER_PARTY,
+            text: outcome.error,
+            correlationId,
+            meta: { label: log?.label, via: "hub" },
+          });
+        }
+        return outcome;
+      }
+    },
+  );
+  ipcMain.handle("comms:list", (_event, limit?: number) =>
+    commsLog.list(typeof limit === "number" ? limit : undefined),
+  );
+  ipcMain.handle("comms:clear", () => {
+    commsLog.clear();
+  });
+  ipcMain.handle("comms:record-brief", (_event, to: CommsParty, text: string) => {
+    if (!to || typeof to.id !== "string" || typeof text !== "string") return;
+    commsLog.record({
+      kind: "brief",
+      from: USER_PARTY,
+      to: { kind: "agent", id: to.id, name: String(to.name ?? ""), type: to.type },
+      text,
+    });
+  });
+
+  ipcMain.handle(
+    "bridge:prepare",
+    (
+      _event,
+      terminalId: string,
+      worktreePath: string,
+      peers: { name: string; type: string }[],
+    ) => {
+      const workspace = writeAgentBridgeWorkspace({
+        terminalId,
+        worktreePath,
+        portFile: PORT_FILE,
+      });
+      return {
+        instructionsRelPath: workspace.instructionsRelPath,
+        scriptRelPath: workspace.scriptRelPath,
+        briefPrompt: buildPipelineBriefPrompt(
+          workspace.instructionsRelPath,
+          Array.isArray(peers) ? peers : [],
+        ),
+      };
     },
   );
 

@@ -113,3 +113,18 @@ test("getTerminalPromptArgs uses kimi's explicit prompt flag", () => {
     "Explore the repo",
   ]);
 });
+
+test("gemini keeps an initial prompt interactive and maps auto-approve to --yolo", () => {
+  assert.deepEqual(getTerminalPromptArgs("gemini", "Explore the repo"), [
+    "--prompt-interactive",
+    "Explore the repo",
+  ]);
+  assert.deepEqual(getTerminalLaunchOptions("gemini", undefined, true), {
+    shell: "gemini",
+    args: ["--yolo"],
+  });
+  assert.deepEqual(getTerminalLaunchOptions("gemini", "sess-1"), {
+    shell: "gemini",
+    args: ["--resume", "sess-1"],
+  });
+});

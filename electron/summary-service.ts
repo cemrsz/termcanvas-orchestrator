@@ -6,7 +6,7 @@ const isDev = !!process.env.VITE_DEV_SERVER_URL;
 
 type SummaryCli = "claude" | "codex";
 type SessionType = "claude" | "codex";
-type Locale = "en" | "zh";
+type Locale = "en" | "zh" | "tr";
 
 interface SummaryInput {
   terminalId: string;
@@ -30,6 +30,7 @@ const inFlight = new Set<string>();
 const LOCALE_PROMPTS: Record<Locale, string> = {
   en: "Summarize what this session is working on in exactly ONE short sentence (under 60 characters, in English). Output ONLY the summary sentence, nothing else.",
   zh: "用一句简短的中文总结这个会话正在做什么（不超过30个字）。只输出总结本身，不要输出任何其他内容。",
+  tr: "Bu oturumun ne üzerinde çalıştığını TEK kısa Türkçe cümleyle özetle (60 karakterden kısa). Sadece özet cümlesini yaz, başka hiçbir şey yazma.",
 };
 
 async function invokeSummaryCli(
