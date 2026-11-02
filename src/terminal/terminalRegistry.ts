@@ -36,6 +36,26 @@ export function refreshRegisteredTerminalViewports(id?: string) {
   }
 }
 
+/**
+ * Plain text of a terminal's last `maxLines` rendered lines (soft-wrapped
+ * rows joined back together). Null when the terminal has no xterm.
+ */
+export function readTerminalText(id: string, maxLines = 200): string | null {
+  const entry = registry.get(id);
+  if (!entry) return null;
+  const buffer = entry.xterm.buffer.active;
+  const start = Math.max(0, buffer.length - Math.max(1, maxLines));
+  const lines: string[] = [];
+  for (let i = start; i < buffer.length; i++) {
+    const line = buffer.getLine(i);
+    if (!line) continue;
+    const text = line.translateToString(true);
+    if (line.isWrapped && lines.length > 0) lines[lines.length - 1] += text;
+    else lines.push(text);
+  }
+  return lines.join("\n");
+}
+
 export function serializeTerminal(id: string): string | null {
   const entry = registry.get(id);
   if (!entry) return null;

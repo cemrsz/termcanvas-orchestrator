@@ -25,6 +25,7 @@ import {
   writeAgentBridgeWorkspace,
 } from "./orchestrator-bridge";
 import { PipelineGuard, framePipelineMessage } from "./pipeline-guard";
+import { detectApprovalPrompt, extractScreenReply } from "./screen-reply";
 import type { CommsLog } from "./comms-log";
 import { AiConnectorError } from "./ai-connector-http";
 import { MAX_AI_TIMEOUT_MS } from "./ai-connector-service";
@@ -91,6 +92,8 @@ export class ApiServer {
   private server: http.Server | null = null;
   private deps: ApiServerDeps;
   private pipelineGuard = new PipelineGuard();
+  /** Last text pasted into each agent: where its answer starts on screen. */
+  private lastDelivered = new Map<string, string>();
 
   constructor(deps: ApiServerDeps) {
     this.deps = deps;
@@ -765,7 +768,30 @@ export class ApiServer {
     const manifest = await this.loadBridgeManifest(scope);
     const agent = this.resolveBridgeAgent(manifest, ref);
     if (waiting) this.pipelineGuard.noteWaiting(scope.id, agent.id);
-    return { agent: this.withTelemetry(agent) };
+    const live = this.withTelemetry(agent);
+    // Without turn telemetry (e.g. Gemini CLI) the screen tells whether the
+    // agent waits for the user's approval.
+    const untracked = !live.turnState || live.turnState === "unknown";
+    const awaitingApproval = untracked
+      ? detectApprovalPrompt(await this.readScreen(agent))
+      : live.turnState === "awaiting_input";
+    return { agent: { ...live, awaitingApproval } };
+  }
+
+  /** Rendered screen text of an agent, falling back to raw PTY output. */
+  private async readScreen(agent: BridgeAgent, maxLines = 200): Promise<string> {
+    try {
+      const text = (await this.execRenderer(
+        `window.__tcApi.readTerminalText(${JSON.stringify(agent.id)}, ${maxLines})`,
+      )) as string | null;
+      if (typeof text === "string" && text.trim()) return text;
+    } catch {
+      // No window or no xterm for this terminal.
+    }
+    const lines = agent.ptyId
+      ? this.deps.ptyManager.getOutput(agent.ptyId, maxLines)
+      : [];
+    return stripAnsi(lines.join("\n"));
   }
 
   private async bridgeSend(scope: BridgeScope, body: any) {
@@ -828,6 +854,7 @@ export class ApiServer {
         { status: 500 },
       );
     }
+    this.lastDelivered.set(agent.id, delivered);
     this.deps.comms.record({
       kind: "message",
       from: selfParty(manifest),
@@ -973,14 +1000,14 @@ export class ApiServer {
     if (sessionReply) {
       reply = { agent, source: "session", reply: sessionReply };
     } else {
-      // No transcript (e.g. a shell worker): fall back to the screen buffer.
-      const lines = agent.ptyId
-        ? this.deps.ptyManager.getOutput(agent.ptyId, 80)
-        : [];
+      // No transcript (e.g. Gemini CLI): read the answer off the screen.
+      const screen = await this.readScreen(agent);
       reply = {
         agent,
-        source: "terminal",
-        reply: stripAnsi(lines.join("\n")).trim(),
+        source: "screen",
+        reply:
+          extractScreenReply(screen, this.lastDelivered.get(agent.id)) ||
+          screen.trim().split("\n").slice(-40).join("\n"),
       };
     }
     this.recordReply(manifest, agent, reply.reply);

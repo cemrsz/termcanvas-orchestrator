@@ -60,6 +60,7 @@ import { logSlowRendererPath } from "./utils/devPerf";
 import { selectAllTerminalRuntime } from "./terminal/terminalRuntimeStore";
 import { performContextualSelectAll } from "./utils/contextualSelectAll";
 import { startCommsSync } from "./stores/commsStore";
+import { readTerminalText } from "./terminal/terminalRegistry";
 
 function isSkipRestoreSnapshot(
   snapshot: ReturnType<typeof readWorkspaceSnapshot>,
@@ -459,6 +460,9 @@ export function App() {
 
       getBridgeManifest: (terminalId: string) =>
         JSON.parse(JSON.stringify(buildBridgeManifest(terminalId))),
+
+      readTerminalText: (terminalId: string, maxLines?: number) =>
+        readTerminalText(terminalId, maxLines),
     };
 
     (window as any).__tcApi = api;
