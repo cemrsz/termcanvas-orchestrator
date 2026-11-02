@@ -665,7 +665,7 @@ function normalizeOrchestration(
           typeof link.targetId === "string",
       )
     : [];
-  return { orchestratorIds, sources, links };
+  return { orchestratorIds, sources, links, pipes: [] };
 }
 
 function looksLikeSceneWorkspaceSnapshot(record: Record<string, unknown>) {

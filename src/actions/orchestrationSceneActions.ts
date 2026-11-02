@@ -197,6 +197,7 @@ export function buildOrchestratorManifest(
         ptyId: live.ptyId,
         worktreePath: target.worktree.path,
         project: target.project.name,
+        via: "orchestrator",
       });
     } else {
       const source = sources[link.targetId];
@@ -211,14 +212,18 @@ export function buildOrchestratorManifest(
     }
   }
 
+  const self = {
+    id: orchestrator.terminal.id,
+    title: getTerminalDisplayName(orchestrator.terminal),
+    type: orchestrator.terminal.type,
+    worktreePath: orchestrator.worktree.path,
+    role: "orchestrator" as const,
+  };
   return {
-    orchestrator: {
-      id: orchestrator.terminal.id,
-      title: getTerminalDisplayName(orchestrator.terminal),
-      type: orchestrator.terminal.type,
-      worktreePath: orchestrator.worktree.path,
-    },
+    self,
+    orchestrator: self,
     agents,
+    models: [],
     sources: wiredSources,
   };
 }

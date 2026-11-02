@@ -14,6 +14,7 @@ import {
   FileText,
   Globe,
   Sheet,
+  Sparkles,
   StickyNote,
   Workflow,
   X,
@@ -79,6 +80,13 @@ export const SOURCE_KIND_META: Record<
     icon: StickyNote,
     urlPlaceholder: "",
     notesPlaceholder: "Context or rules for the orchestrator, e.g. brand voice",
+  },
+  ai: {
+    label: "AI Model",
+    color: "var(--accent)",
+    icon: Sparkles,
+    urlPlaceholder: "Server URL (optional)",
+    notesPlaceholder: "Role, e.g. strict code reviewer; answer in bullet points",
   },
 };
 

@@ -32,6 +32,7 @@ const DEFAULT_SOURCE_NAMES: Record<OrchestrationSourceKind, string> = {
   api: "HTTP API",
   file: "Local File",
   note: "Note",
+  ai: "AI Model",
 };
 
 interface OrchestrationStore extends OrchestrationDocument {
@@ -66,6 +67,7 @@ export const useOrchestrationStore = create<OrchestrationStore>((set, get) => ({
   orchestratorIds: [],
   sources: {},
   links: [],
+  pipes: [],
 
   markOrchestrator: (terminalId) => {
     if (get().orchestratorIds.includes(terminalId)) return;
@@ -167,6 +169,7 @@ export const useOrchestrationStore = create<OrchestrationStore>((set, get) => ({
       orchestratorIds: doc?.orchestratorIds ?? [],
       sources: doc?.sources ?? {},
       links: doc?.links ?? [],
+      pipes: doc?.pipes ?? [],
     });
   },
 }));
@@ -193,8 +196,13 @@ export function isOrchestratedTerminal(terminalId: string): boolean {
 export function captureOrchestration(
   liveTerminalIds: Set<string>,
 ): OrchestrationDocument | undefined {
-  const { orchestratorIds, sources, links } = useOrchestrationStore.getState();
-  if (orchestratorIds.length === 0 && Object.keys(sources).length === 0) {
+  const { orchestratorIds, sources, links, pipes } =
+    useOrchestrationStore.getState();
+  if (
+    orchestratorIds.length === 0 &&
+    Object.keys(sources).length === 0 &&
+    pipes.length === 0
+  ) {
     return undefined;
   }
   const liveOrchestrators = orchestratorIds.filter((id) =>
@@ -211,5 +219,6 @@ export function captureOrchestration(
           ? liveTerminalIds.has(link.targetId)
           : link.targetId in sources),
     ),
+    pipes,
   };
 }

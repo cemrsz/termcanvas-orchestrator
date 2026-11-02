@@ -35,6 +35,7 @@ ekler; aşağıdaki liste commit sırasıyla aynıdır.
 23. [Haberleşme kaydı](23-haberlesme-kaydi.md) — AI'lar arası her mesaj için tip ve 400 kayıtlık tampon
 24. [Haberleşme akışı: IPC](24-haberlesme-ipc.md) — comms:entry yayını, list/clear ve AI Hub çağrılarının kaydı
 25. [Haberleşme akışı: store](25-haberlesme-store.md) — kablo nabzı, meşgul model sayacı ve okunmamış rozeti
+26. [Veri modeli: pipeline ve AI düğümü](26-pipeline-veri-modeli.md) — yönsüz pipeline kabloları, ai kaynak türü, BridgeManifest
 
 ## Nasıl kullanılır
 
