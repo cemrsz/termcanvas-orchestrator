@@ -41,6 +41,7 @@ ekler; aşağıdaki liste commit sırasıyla aynıdır.
 29. [Kalıcılık: pipeline ve AI düğümü](29-pipeline-kalicilik.md) — doğrulayarak okuma, ölü uçları ayıklayarak kaydetme
 30. [Test: pipeline](30-test-pipeline.md) — store kuralları, orkestratöre dönüşüm, kayıt/geri yükleme
 31. [Köprü manifesti](31-kopru-manifesti.md) — her agent'ın erişebildiği eşler, modeller ve kaynaklar; kabuklar hariç
+32. [API: /bridge uçları](32-api-bridge.md) — her bağlı agent için ortak uçlar; /orchestrator aynı kodla
 
 ## Nasıl kullanılır
 

@@ -20,7 +20,17 @@ import {
   submitComposerRequest,
 } from "./composer-submit";
 import { extractLastAssistantReply, stripAnsi } from "./orchestrator-bridge";
-import type { OrchestratorManifest } from "../src/types/orchestration";
+import type {
+  BridgeAgent,
+  BridgeManifest,
+} from "../src/types/orchestration";
+
+interface BridgeScope {
+  /** The calling agent's terminal id. */
+  id: string;
+  /** /orchestrator/* routes only serve orchestrators. */
+  requireOrchestrator: boolean;
+}
 import type { TerminalType } from "../src/types";
 
 interface ApiServerDeps {
@@ -203,21 +213,25 @@ export class ApiServer {
     if (method === "GET" && pathname === "/orchestrator/list") {
       return this.execRenderer(`window.__tcApi.listOrchestrators()`);
     }
-    if (method === "GET" && pathname.match(/^\/orchestrator\/[^/]+$/)) {
-      const id = decodeURIComponent(pathname.split("/")[2]);
-      return this.orchestratorManifest(id);
-    }
-    if (method === "GET" && pathname.match(/^\/orchestrator\/[^/]+\/agent$/)) {
-      const id = decodeURIComponent(pathname.split("/")[2]);
-      return this.orchestratorAgent(id, url.searchParams.get("agent"));
-    }
-    if (method === "POST" && pathname.match(/^\/orchestrator\/[^/]+\/send$/)) {
-      const id = decodeURIComponent(pathname.split("/")[2]);
-      return this.orchestratorSend(id, body);
-    }
-    if (method === "GET" && pathname.match(/^\/orchestrator\/[^/]+\/reply$/)) {
-      const id = decodeURIComponent(pathname.split("/")[2]);
-      return this.orchestratorReply(id, url.searchParams.get("agent"));
+    // /bridge/<terminalId>/… serves any wired agent; /orchestrator/<id>/…
+    // is the same API restricted to orchestrators (older bridge scripts).
+    const bridgeMatch = pathname.match(
+      /^\/(bridge|orchestrator)\/([^/]+)(?:\/(agent|send|reply))?$/,
+    );
+    if (bridgeMatch) {
+      const scope: BridgeScope = {
+        id: decodeURIComponent(bridgeMatch[2]),
+        requireOrchestrator: bridgeMatch[1] === "orchestrator",
+      };
+      const action = bridgeMatch[3] ?? "";
+      if (method === "GET" && action === "") return this.bridgeManifest(scope);
+      if (method === "GET" && action === "agent") {
+        return this.bridgeAgent(scope, url.searchParams.get("agent"));
+      }
+      if (method === "POST" && action === "send") return this.bridgeSend(scope, body);
+      if (method === "GET" && action === "reply") {
+        return this.bridgeReply(scope, url.searchParams.get("agent"));
+      }
     }
 
     throw Object.assign(new Error("Not found"), { status: 404 });
@@ -610,13 +624,16 @@ export class ApiServer {
     return this.execRenderer(`window.__tcApi.getProjects()`);
   }
 
-  private async loadOrchestratorManifest(
-    orchestratorId: string,
-  ): Promise<OrchestratorManifest> {
+  private async loadBridgeManifest(scope: BridgeScope): Promise<BridgeManifest> {
     const manifest = (await this.execRenderer(
-      `window.__tcApi.getOrchestratorManifest(${JSON.stringify(orchestratorId)})`,
-    )) as OrchestratorManifest | null;
+      `window.__tcApi.getBridgeManifest(${JSON.stringify(scope.id)})`,
+    )) as BridgeManifest | null;
     if (!manifest) {
+      throw Object.assign(new Error("Terminal not found on canvas"), {
+        status: 404,
+      });
+    }
+    if (scope.requireOrchestrator && manifest.self.role !== "orchestrator") {
       throw Object.assign(new Error("Orchestrator not found on canvas"), {
         status: 404,
       });
@@ -624,7 +641,7 @@ export class ApiServer {
     return manifest;
   }
 
-  private withTelemetry(agent: OrchestratorManifest["agents"][number]) {
+  private withTelemetry(agent: BridgeAgent) {
     const snapshot = this.deps.telemetryService.getTerminalSnapshot(agent.id);
     return {
       ...agent,
@@ -637,12 +654,12 @@ export class ApiServer {
 
   /**
    * Resolve an agent reference (1-based number, id, or name) against the
-   * agents wired to this orchestrator. Unwired terminals never resolve.
+   * agents wired to the caller. Unwired terminals never resolve.
    */
-  private resolveOrchestratorAgent(
-    manifest: OrchestratorManifest,
+  private resolveBridgeAgent(
+    manifest: BridgeManifest,
     ref: string | null | undefined,
-  ) {
+  ): BridgeAgent {
     const agents = manifest.agents;
     const value = (ref ?? "").trim();
     if (!value) {
@@ -657,8 +674,10 @@ export class ApiServer {
       (agent) => agent.id === value || agent.name.toLowerCase() === lower,
     );
     if (exact.length === 1) return exact[0];
-    const partial = agents.filter((agent) =>
-      agent.name.toLowerCase().includes(lower),
+    const partial = agents.filter(
+      (agent) =>
+        agent.name.toLowerCase().includes(lower) ||
+        agent.type.toLowerCase() === lower,
     );
     if (exact.length === 0 && partial.length === 1) return partial[0];
     const wired =
@@ -671,27 +690,29 @@ export class ApiServer {
     );
   }
 
-  private async orchestratorManifest(orchestratorId: string) {
-    const manifest = await this.loadOrchestratorManifest(orchestratorId);
+  private async bridgeManifest(scope: BridgeScope) {
+    const manifest = await this.loadBridgeManifest(scope);
     return {
       ...manifest,
+      // Older bridge scripts read `orchestrator.title`.
+      orchestrator: manifest.self,
       agents: manifest.agents.map((agent) => this.withTelemetry(agent)),
     };
   }
 
-  private async orchestratorAgent(orchestratorId: string, ref: string | null) {
-    const manifest = await this.loadOrchestratorManifest(orchestratorId);
-    const agent = this.resolveOrchestratorAgent(manifest, ref);
+  private async bridgeAgent(scope: BridgeScope, ref: string | null) {
+    const manifest = await this.loadBridgeManifest(scope);
+    const agent = this.resolveBridgeAgent(manifest, ref);
     return { agent: this.withTelemetry(agent) };
   }
 
-  private async orchestratorSend(orchestratorId: string, body: any) {
+  private async bridgeSend(scope: BridgeScope, body: any) {
     const text = body?.text;
     if (typeof text !== "string" || text.trim().length === 0) {
       throw Object.assign(new Error("text is required"), { status: 400 });
     }
-    const manifest = await this.loadOrchestratorManifest(orchestratorId);
-    const agent = this.resolveOrchestratorAgent(manifest, body?.agent);
+    const manifest = await this.loadBridgeManifest(scope);
+    const agent = this.resolveBridgeAgent(manifest, body?.agent);
     if (!agent.ptyId || !this.deps.ptyManager.getPid(agent.ptyId)) {
       throw Object.assign(
         new Error(`${agent.name} is not running on the canvas`),
@@ -711,7 +732,7 @@ export class ApiServer {
       createDefaultComposerSubmitDeps(
         process.platform as "darwin" | "win32" | "linux",
         () => {
-          throw new Error("Images are not supported over the orchestrator API");
+          throw new Error("Images are not supported over the bridge API");
         },
         (ptyId, data) => this.deps.ptyManager.write(ptyId, data),
       ),
@@ -725,10 +746,10 @@ export class ApiServer {
     return { ok: true, agent: { id: agent.id, name: agent.name } };
   }
 
-  private async orchestratorReply(orchestratorId: string, ref: string | null) {
-    const manifest = await this.loadOrchestratorManifest(orchestratorId);
+  private async bridgeReply(scope: BridgeScope, ref: string | null) {
+    const manifest = await this.loadBridgeManifest(scope);
     const agent = this.withTelemetry(
-      this.resolveOrchestratorAgent(manifest, ref),
+      this.resolveBridgeAgent(manifest, ref),
     );
     const sessionFile =
       this.deps.telemetryService.getTerminalSnapshot(agent.id)?.session_file;
