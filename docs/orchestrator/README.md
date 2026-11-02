@@ -70,6 +70,7 @@ ekler; aşağıdaki liste commit sırasıyla aynıdır.
 58. [Şablon: Model konseyi](58-konsey-sablonu.md) — orkestratör ve ona bağlı üç AI düğümü tek tıkla
 59. [Terminal menüsü: pipeline](59-terminal-menusu-pipeline.md) — Pipeline bağla ▸, Pipeline'ı kes ▸, kime bağlı olduğunu söyle
 60. [Rozetler](60-rozetler.md) — kim kime bağlı bir bakışta: model sayısı ve ⇄ eş isimleri
+61. [AI Hub: hepsi bir arada](61-ai-hub.md) — tüm sağlayıcılar tek pencerede; anahtar kaydet/sil, durum, uyarılar
 
 ## Nasıl kullanılır
 

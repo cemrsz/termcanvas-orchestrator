@@ -49,6 +49,7 @@ import { SnapshotHistoryModal } from "./components/SnapshotHistoryModal";
 import { useSnapshotHistoryStore } from "./stores/snapshotHistoryStore";
 import { Hub } from "./components/Hub";
 import { CanvasManagerModal } from "./components/CanvasManagerModal";
+import { AiHubModal } from "./components/AiHub/AiHubModal";
 import { updateWindowTitle } from "./titleHelper";
 import { resolveTerminalWithRuntimeState } from "./stores/terminalRuntimeStateStore";
 import {
@@ -495,6 +496,7 @@ export function App() {
       <PinDetailDrawer />
       <Hub />
       <CanvasManagerModal />
+      <AiHubModal />
     </div>
   );
 }

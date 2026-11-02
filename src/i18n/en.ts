@@ -1100,6 +1100,26 @@ export const en = {
   "canvas.menu.template.trioHint": "3 agents, all wired",
   "canvas.menu.template.council": "Model council",
   "canvas.menu.template.councilHint": "orchestrator + Claude, Gemini, ChatGPT",
+
+  // AI Hub
+  "ai.hub.title": "AI Hub",
+  "ai.hub.subtitle":
+    "Every AI the canvas can talk to: keys and CLIs, a council, and the live feed",
+  "ai.hub.tab.connectors": "Connectors",
+  "ai.hub.connectorsIntro":
+    "Connect each AI once, then add it to the canvas or wire it to your agents. API keys are encrypted with your OS keyring and never leave this app. No key? Use the CLI: Claude Code, Gemini CLI and Codex work with your subscription login.",
+  "ai.hub.moreProviders": "More providers",
+  "ai.hub.keySaved": (hint: string) => `key saved ${hint}`,
+  "ai.hub.keyEnv": (name: string) => `key from $${name}`,
+  "ai.hub.noKeyNeeded": "no key needed",
+  "ai.hub.needsUrl": "set a server URL",
+  "ai.hub.noKey": "no API key",
+  "ai.hub.replaceKey": "Paste a new key to replace it",
+  "ai.hub.apiKeyFor": (name: string) => `${name} API key`,
+  "ai.hub.removeKey": "Remove saved key",
+  "ai.hub.getKey": "Get a key",
+  "ai.hub.insecure":
+    "This system has no keyring, so the key is stored unencrypted in a file only your user can read.",
 } as const;
 
 export type TranslationKey = keyof typeof en;
