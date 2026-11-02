@@ -671,6 +671,20 @@ contextBridge.exposeInMainWorld("termcanvas", {
     submit: (request: unknown) =>
       ipcRenderer.invoke("composer:submit", request),
   },
+  ai: {
+    status: () => ipcRenderer.invoke("ai:status"),
+    setKey: (id: string, key: string) =>
+      ipcRenderer.invoke("ai:set-key", id, key),
+    clearKey: (id: string) => ipcRenderer.invoke("ai:clear-key", id),
+    setConfig: (
+      id: string,
+      patch: { model?: string | null; baseURL?: string | null },
+    ) => ipcRenderer.invoke("ai:set-config", id, patch),
+    checkCli: (id: string) => ipcRenderer.invoke("ai:check-cli", id),
+    listModels: (id: string, baseURL?: string) =>
+      ipcRenderer.invoke("ai:list-models", id, baseURL),
+    invoke: (request: unknown) => ipcRenderer.invoke("ai:invoke", request),
+  },
   orchestrator: {
     prepare: (terminalId: string, worktreePath: string) =>
       ipcRenderer.invoke(

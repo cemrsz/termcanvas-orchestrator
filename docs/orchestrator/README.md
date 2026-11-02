@@ -31,6 +31,7 @@ ekler; aşağıdaki liste commit sırasıyla aynıdır.
 19. [Bağlayıcı servisi](19-baglayici-servisi.md) — şifreli anahtarlar, ortam değişkenleri, CLI kontrolü, model listesi
 20. [Bağlayıcılar: soru sorma](20-baglayici-cagirma.md) — invoke(): model çözümü, yerel sunucu, CLI hata ve süre aşımı
 21. [Test: bağlayıcı servisi](21-baglayici-testleri.md) — şifreli anahtar, ortam değişkeni, API ve CLI çağrıları
+22. [IPC: ai kanalları](22-baglayici-ipc.md) — durum, anahtar, model listesi ve invoke için window.termcanvas.ai
 
 ## Nasıl kullanılır
 

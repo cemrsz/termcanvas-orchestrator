@@ -61,6 +61,16 @@ import {
   buildOrchestratorStartPrompt,
   writeOrchestratorWorkspace,
 } from "./orchestrator-bridge";
+import { AiConnectorService } from "./ai-connector-service";
+import { AiConnectorError } from "./ai-connector-http";
+import { runResolvedProcess } from "./ai-connector-cli";
+import {
+  isAiConnectorId,
+  isAiTransport,
+  type AiConnectorId,
+  type AiInvokeOutcome,
+  type AiInvokeRequest,
+} from "../shared/ai-connectors";
 import {
   collectUsage,
   collectUsageRange,
@@ -322,6 +332,81 @@ taskStore.on("pin:updated", (payload: { pin: unknown; repo: string }) => {
 taskStore.on("pin:removed", (payload: { id: string; repo: string }) => {
   sendToWindow(mainWindow, "pin:event", { type: "pin:removed", ...payload });
 });
+
+/** Login-shell environment for API keys and provider CLIs. */
+async function getLoginShellEnv(): Promise<Record<string, string | undefined>> {
+  try {
+    const spec = await buildLaunchSpec({ cwd: os.homedir() });
+    return { ...process.env, ...spec.env };
+  } catch {
+    return { ...process.env };
+  }
+}
+
+const PROVIDER_CLI_ENV = {
+  // Hooks of a one-shot CLI must not report into a canvas terminal.
+  TERMCANVAS_SOCKET: undefined,
+  TERMCANVAS_TERMINAL_ID: undefined,
+  TERMCANVAS_TERMINAL_TYPE: undefined,
+  NO_COLOR: "1",
+  FORCE_COLOR: "0",
+};
+
+const aiConnectorService = new AiConnectorService({
+  configPath: path.join(TERMCANVAS_DIR, "ai-connectors.json"),
+  encryptionAvailable: () => safeStorage.isEncryptionAvailable(),
+  encrypt: (plaintext) =>
+    safeStorage.encryptString(plaintext).toString("base64"),
+  decrypt: (ciphertext) =>
+    safeStorage.decryptString(Buffer.from(ciphertext, "base64")),
+  getEnv: getLoginShellEnv,
+  // Chromium's network stack honours the user's proxy settings.
+  fetch: ((input: string, init?: RequestInit) =>
+    net.fetch(input, init)) as unknown as typeof fetch,
+  resolveCli: async (command) => {
+    try {
+      const spec = await buildLaunchSpec({ cwd: os.homedir(), shell: command });
+      // Windows batch shims run through cmd.exe /d /s /c <file>.
+      return /cmd(\.exe)?$/i.test(spec.file) && spec.args[3]
+        ? spec.args[3]
+        : spec.file;
+    } catch {
+      return null;
+    }
+  },
+  runCli: async (command, args, options) => {
+    const spec = await buildLaunchSpec({
+      cwd: options.cwd,
+      shell: command,
+      args,
+      envOverrides: PROVIDER_CLI_ENV,
+    });
+    return runResolvedProcess(spec.file, spec.args, {
+      cwd: spec.cwd,
+      env: spec.env,
+      stdin: options.stdin,
+      timeoutMs: options.timeoutMs,
+    });
+  },
+  now: () => Date.now(),
+  tmpDir: () => os.tmpdir(),
+});
+
+function toAiErrorOutcome(error: unknown): Extract<AiInvokeOutcome, { ok: false }> {
+  if (error instanceof AiConnectorError) {
+    return { ok: false, code: error.code, error: error.message };
+  }
+  return {
+    ok: false,
+    code: "unknown",
+    error: error instanceof Error ? error.message : String(error),
+  };
+}
+
+function requireConnectorId(id: unknown): AiConnectorId {
+  if (!isAiConnectorId(id)) throw new Error(`Unknown AI connector: ${String(id)}`);
+  return id;
+}
 
 const apiServer = new ApiServer({
   getWindow: () => mainWindow,
@@ -1843,6 +1928,67 @@ function setupIpc() {
           ok: false as const,
           error: err instanceof Error ? err.message : String(err),
         };
+      }
+    },
+  );
+
+  ipcMain.handle("ai:status", () => aiConnectorService.status());
+  ipcMain.handle("ai:set-key", (_event, id: unknown, key: unknown) => {
+    const connector = requireConnectorId(id);
+    aiConnectorService.setKey(connector, typeof key === "string" ? key : "");
+    return aiConnectorService.statusOf(connector);
+  });
+  ipcMain.handle("ai:clear-key", (_event, id: unknown) => {
+    const connector = requireConnectorId(id);
+    aiConnectorService.clearKey(connector);
+    return aiConnectorService.statusOf(connector);
+  });
+  ipcMain.handle(
+    "ai:set-config",
+    (
+      _event,
+      id: unknown,
+      patch: { model?: string | null; baseURL?: string | null } | null,
+    ) => {
+      const connector = requireConnectorId(id);
+      aiConnectorService.setConfig(connector, {
+        ...(patch && "model" in patch ? { model: patch.model ?? null } : {}),
+        ...(patch && "baseURL" in patch ? { baseURL: patch.baseURL ?? null } : {}),
+      });
+      return aiConnectorService.statusOf(connector);
+    },
+  );
+  ipcMain.handle("ai:check-cli", (_event, id: unknown) =>
+    aiConnectorService.checkCli(requireConnectorId(id)),
+  );
+  ipcMain.handle(
+    "ai:list-models",
+    async (_event, id: unknown, baseURL?: string) => {
+      try {
+        const models = await aiConnectorService.listModels(
+          requireConnectorId(id),
+          typeof baseURL === "string" ? baseURL : undefined,
+        );
+        return { ok: true as const, models };
+      } catch (error) {
+        return toAiErrorOutcome(error);
+      }
+    },
+  );
+  ipcMain.handle(
+    "ai:invoke",
+    async (_event, request: AiInvokeRequest): Promise<AiInvokeOutcome> => {
+      try {
+        if (!request || !isAiTransport(request.transport)) {
+          throw new Error("transport must be api or cli");
+        }
+        const result = await aiConnectorService.invoke({
+          ...request,
+          connector: requireConnectorId(request.connector),
+        });
+        return { ok: true, ...result };
+      } catch (error) {
+        return toAiErrorOutcome(error);
       }
     },
   );

@@ -11,6 +11,14 @@ import type {
 } from "../../shared/render-diagnostics";
 import type { SessionHistoryChangedEvent } from "../../shared/sessions";
 import type {
+  AiCliStatus,
+  AiConnectorId,
+  AiConnectorStatus,
+  AiErrorCode,
+  AiInvokeOutcome,
+  AiInvokeRequest,
+} from "../../shared/ai-connectors";
+import type {
   Pin,
   PinLink,
   PinStatus,
@@ -979,6 +987,24 @@ export interface TermCanvasAPI {
   };
   composer: {
     submit: (request: ComposerSubmitRequest) => Promise<ComposerSubmitResult>;
+  };
+  ai: {
+    status: () => Promise<AiConnectorStatus[]>;
+    setKey: (id: AiConnectorId, key: string) => Promise<AiConnectorStatus>;
+    clearKey: (id: AiConnectorId) => Promise<AiConnectorStatus>;
+    setConfig: (
+      id: AiConnectorId,
+      patch: { model?: string | null; baseURL?: string | null },
+    ) => Promise<AiConnectorStatus>;
+    checkCli: (id: AiConnectorId) => Promise<AiCliStatus>;
+    listModels: (
+      id: AiConnectorId,
+      baseURL?: string,
+    ) => Promise<
+      | { ok: true; models: string[] }
+      | { ok: false; code: AiErrorCode; error: string }
+    >;
+    invoke: (request: AiInvokeRequest) => Promise<AiInvokeOutcome>;
   };
   orchestrator: {
     prepare: (
