@@ -46,6 +46,7 @@ ekler; aşağıdaki liste commit sırasıyla aynıdır.
 34. [Pipeline mesajları: çerçeve ve korumalar](34-pipeline-koruma.md) — gönderen başlığı, karşılıklı bekleme kilidi ve hız sınırı
 35. [API: modele danışma](35-api-model.md) — M1/ad/bağlayıcı ile model seçimi, persona, akışa kayıt
 36. [Akışa kayıt](36-akisa-kayit.md) — send/reply tekrar etmeden kaydedilir; source/trigger /event ile bildirilir
+37. [Ekrandan cevap okuma](37-ekrandan-cevap.md) — Gemini CLI gibi kaydı olmayan agent'ların cevabı ekrandan
 
 ## Nasıl kullanılır
 
