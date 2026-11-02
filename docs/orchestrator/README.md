@@ -53,6 +53,7 @@ ekler; aşağıdaki liste commit sırasıyla aynıdır.
 41. [discuss: AI'lar sırayla tartışır](41-tartisma.md) — katılımcılar birbirinin cevabını görerek tur tur konuşur
 42. [Köprü CLI: kum havuzu ipuçları](42-kum-havuzu-ipuclari.md) — EPERM/ECONNREFUSED için yükseltilmiş izinle tekrar dene
 43. [ORCHESTRATOR.md: modeller](43-orkestrator-talimati.md) — modeller düşünmek için; council/discuss ne zaman kullanılır
+44. [Test: köprü betiği](44-test-kopru-betigi.md) — tc.mjs sahte API'ye karşı: Gemini sessizlik, Codex tur sonu, konsey, tartışma
 
 ## Nasıl kullanılır
 

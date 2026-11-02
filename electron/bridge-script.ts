@@ -39,8 +39,9 @@ const START_GRACE_MS = 30000;
 const MAX_PRINT_CHARS = 20000;
 // Agents without turn telemetry (e.g. Gemini CLI): a turn is over when the
 // agent printed something after our message and then went quiet this long.
-const QUIET_MS = 6000;
-const MIN_TURN_MS = 4000;
+const QUIET_MS = Number(process.env.TC_BRIDGE_QUIET_MS) || 6000;
+const MIN_TURN_MS = Number(process.env.TC_BRIDGE_MIN_TURN_MS ?? 4000);
+const POLL_MS = Number(process.env.TC_BRIDGE_POLL_MS) || 2500;
 
 function readPort() {
   let raw;
@@ -254,7 +255,7 @@ async function waitFor(agentRef, timeoutSec) {
       throw new Error(a.name + " is not running. Ask the user to open or restart that terminal.");
     }
     if (Date.now() >= deadline) return { code: 2, id: a.id, name: a.name, state };
-    await new Promise((resolve) => setTimeout(resolve, 2500));
+    await new Promise((resolve) => setTimeout(resolve, POLL_MS));
   }
 }
 
