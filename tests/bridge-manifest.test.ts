@@ -149,3 +149,39 @@ test("connectPipeInScene wires agents and models but never shells", async () => 
   assert.equal(connectPipeInScene("claude", "nope"), null, "unknown node");
   assert.equal(useOrchestrationStore.getState().pipes.length, 2);
 });
+
+test("the trio template opens Claude, Gemini and Codex fully wired and briefed", async () => {
+  setup();
+  const prepared: { id: string; peers: string }[] = [];
+  (window as any).termcanvas = {
+    bridge: {
+      prepare: async (id: string, _worktree: string, peers: { name: string }[]) => {
+        prepared.push({ id, peers: peers.map((peer) => peer.name).join("+") });
+        return {
+          instructionsRelPath: `.termcanvas/bridge/${id}/BRIDGE.md`,
+          scriptRelPath: `.termcanvas/bridge/${id}/tc.mjs`,
+          briefPrompt: `brief:${peers.map((peer) => peer.name).join(",")}`,
+        };
+      },
+    },
+  };
+  try {
+    const { createAgentTrioInScene } = await import("../src/actions/orchestrationSceneActions.ts");
+    const created = await createAgentTrioInScene({ projectId: "p1", worktreeId: "w1", position: { x: 0, y: 2000 } });
+    assert.deepEqual(created.map((t) => [t.type, t.customTitle]), [
+      ["claude", "Claude"],
+      ["gemini", "Gemini"],
+      ["codex", "Codex"],
+    ]);
+    assert.deepEqual(
+      created.map((t) => t.initialPrompt),
+      ["brief:Gemini,Codex", "brief:Claude,Codex", "brief:Claude,Gemini"],
+    );
+    assert.equal(useOrchestrationStore.getState().pipes.length, 3, "every pair is wired");
+    assert.equal(prepared.length, 3);
+    const manifest = buildBridgeManifest(created[0].id);
+    assert.deepEqual(manifest?.agents.map((a) => a.name).sort(), ["Codex", "Gemini"]);
+  } finally {
+    (window as any).termcanvas = undefined;
+  }
+});

@@ -304,6 +304,83 @@ export function addOrchestrationSourceInScene(
   return id;
 }
 
+const TRIO_TYPES = ["claude", "gemini", "codex"] as const;
+const TRIO_NAMES: Record<(typeof TRIO_TYPES)[number], string> = {
+  claude: "Claude",
+  gemini: "Gemini",
+  codex: "Codex",
+};
+const TEMPLATE_GAP = 80;
+
+/**
+ * Open Claude, Gemini and Codex side by side, wired to each other with
+ * pipelines, each one started with a brief naming the other two — so all
+ * three can talk from their first turn.
+ */
+export async function createAgentTrioInScene(options: {
+  projectId: string;
+  worktreeId: string;
+  position?: { x: number; y: number };
+}): Promise<TerminalData[]> {
+  const project = useProjectStore
+    .getState()
+    .projects.find((candidate) => candidate.id === options.projectId);
+  const worktree = project?.worktrees.find(
+    (candidate) => candidate.id === options.worktreeId,
+  );
+  if (!project || !worktree || !window.termcanvas?.bridge) return [];
+
+  const bases = TRIO_TYPES.map((type) => createTerminal(type));
+  let briefs: string[];
+  try {
+    briefs = await Promise.all(
+      bases.map(async (base, index) => {
+        const peers = bases
+          .filter((_, other) => other !== index)
+          .map((peer) => ({
+            name: TRIO_NAMES[peer.type as (typeof TRIO_TYPES)[number]],
+            type: peer.type,
+          }));
+        const { briefPrompt } = await window.termcanvas.bridge.prepare(
+          base.id,
+          worktree.path,
+          peers,
+        );
+        return briefPrompt;
+      }),
+    );
+  } catch (error) {
+    notifyError(
+      `Could not prepare the pipelines: ${error instanceof Error ? error.message : String(error)}`,
+    );
+    return [];
+  }
+
+  const origin = options.position ?? { x: 0, y: 0 };
+  const created = bases.map((base, index) =>
+    createTerminalInScene({
+      projectId: project.id,
+      worktreeId: worktree.id,
+      terminal: {
+        ...base,
+        customTitle: TRIO_NAMES[base.type as (typeof TRIO_TYPES)[number]],
+        // The brief is the first prompt, so the agent knows its peers at once.
+        initialPrompt: briefs[index],
+      },
+      position: options.position
+        ? { x: origin.x + index * (base.width + TEMPLATE_GAP), y: origin.y }
+        : undefined,
+    }),
+  );
+  const store = useOrchestrationStore.getState();
+  for (let i = 0; i < created.length; i++) {
+    for (let j = i + 1; j < created.length; j++) {
+      store.connectPipe(created[i].id, created[j].id);
+    }
+  }
+  return created;
+}
+
 /**
  * Add an AI model node. It starts on the API when that can be called, on
  * the CLI when only the CLI is set up (e.g. Gemini with a Google login), and

@@ -1073,6 +1073,9 @@ export const en = {
   "canvas.menu.source.api": "HTTP API",
   "canvas.menu.source.file": "Local File",
   "canvas.menu.source.note": "Note",
+  "canvas.menu.templates": "Templates",
+  "canvas.menu.template.trio": "Claude ⇄ Gemini ⇄ Codex",
+  "canvas.menu.template.trioHint": "3 agents, all wired",
 } as const;
 
 export type TranslationKey = keyof typeof en;

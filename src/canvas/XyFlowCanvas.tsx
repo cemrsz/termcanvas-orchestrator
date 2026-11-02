@@ -81,6 +81,7 @@ import { useTerminalRuntimeStateStore } from "../stores/terminalRuntimeStateStor
 import {
   addAiNodeInScene,
   addOrchestrationSourceInScene,
+  createAgentTrioInScene,
   connectPipeInScene,
   createOrchestratorInScene,
   ORCHESTRATOR_TYPES,
@@ -448,6 +449,16 @@ function XyFlowCanvasInner() {
     },
     [contextMenu, resolveContextWorktree],
   );
+
+  const handleContextMenuTrio = useCallback(() => {
+    if (!contextMenu) return;
+    const target = resolveContextWorktree();
+    if (!target) return;
+    void createAgentTrioInScene({
+      ...target,
+      position: { x: contextMenu.flowX, y: contextMenu.flowY },
+    });
+  }, [contextMenu, resolveContextWorktree]);
 
   const handleContextMenuAi = useCallback(
     (connector: AiConnectorId) => {
@@ -1019,6 +1030,17 @@ function XyFlowCanvasInner() {
                   onClick: () => handleContextMenuAi(plugin.id),
                 },
               ]),
+            },
+            {
+              type: "submenu",
+              label: t["canvas.menu.templates"],
+              items: [
+                {
+                  label: t["canvas.menu.template.trio"],
+                  hint: t["canvas.menu.template.trioHint"],
+                  onClick: handleContextMenuTrio,
+                },
+              ],
             },
             {
               type: "submenu",
