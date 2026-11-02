@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { resolveWireIntent } from "../src/canvas/orchestrationFlow.tsx";
+import { buildPipeEdges, resolveWireIntent } from "../src/canvas/orchestrationFlow.tsx";
 
 const agents = new Set(["claude", "gemini", "codex", "lead"]);
 const context = {
@@ -68,4 +68,52 @@ test("nonsense wires are refused", () => {
     null,
     "foreign handles",
   );
+});
+
+test("pipe edges start at an agent and blend the two ends' colors", () => {
+  const terminalRects = new Map([
+    ["claude", { x: 0, y: 0, w: 600 }],
+    ["gemini", { x: 900, y: 0, w: 600 }],
+  ]);
+  const terminalColors = new Map([
+    ["claude", "#f5a623"],
+    ["gemini", "#4285f4"],
+  ]);
+  const sources = {
+    "ai-1": {
+      id: "ai-1",
+      kind: "ai" as const,
+      name: "ChatGPT",
+      url: "",
+      description: "",
+      ai: { connector: "chatgpt" as const, model: "", transport: "api" as const },
+      x: -500,
+      y: 0,
+      w: 320,
+      h: 250,
+    },
+  };
+  const edges = buildPipeEdges({
+    pipes: [
+      { id: "p1", a: "gemini", b: "claude" },
+      { id: "p2", a: "ai-1", b: "claude" },
+      { id: "p3", a: "claude", b: "gone" },
+    ],
+    sources,
+    terminalRects,
+    terminalColors,
+    busyTerminalIds: new Set(["gemini"]),
+  });
+  assert.equal(edges.length, 2, "edges to missing nodes are skipped");
+  const [toClaude, toModel] = edges;
+  assert.equal(toClaude.source, "gemini");
+  assert.equal(toClaude.sourceHandle, "orchestration-in-left", "gemini faces left to claude");
+  assert.equal(toClaude.targetHandle, "orchestration-in-right");
+  assert.deepEqual(
+    [toClaude.data?.sourceColor, toClaude.data?.targetColor, toClaude.data?.busy],
+    ["#4285f4", "#f5a623", true],
+  );
+  assert.equal(toModel.source, "claude", "the agent end is the edge source");
+  assert.equal(toModel.target, "ai-1");
+  assert.equal(toModel.data?.targetColor, "#10a37f", "AI nodes use their connector color");
 });

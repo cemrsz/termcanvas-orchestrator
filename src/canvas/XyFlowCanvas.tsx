@@ -62,12 +62,15 @@ import {
 } from "./xyflowNodes";
 import {
   buildOrchestrationEdges,
+  buildPipeEdges,
   resolveWireIntent,
   buildSourceFlowNodes,
   orchestrationEdgeTypes,
   sourcesLayoutKey,
   type OrchestrationFlowEdge,
+  type PipeFlowEdge,
 } from "./orchestrationFlow";
+import { TERMINAL_TYPE_CONFIG } from "../terminal/terminalTypeConfig";
 import {
   isAgentTerminalType,
   useOrchestrationStore,
@@ -446,6 +449,7 @@ function XyFlowCanvasInner() {
 
   const sources = useOrchestrationStore((state) => state.sources);
   const links = useOrchestrationStore((state) => state.links);
+  const pipes = useOrchestrationStore((state) => state.pipes);
   const orchestratorIds = useOrchestrationStore(
     (state) => state.orchestratorIds,
   );
@@ -476,8 +480,9 @@ function XyFlowCanvasInner() {
   const [nodes, setNodes, onNodesChange] =
     useNodesState<AnyCanvasFlowNode>(projectedNodes);
 
-  const edges = useMemo(() => {
+  const edges = useMemo<(OrchestrationFlowEdge | PipeFlowEdge)[]>(() => {
     const terminalRects = new Map<string, { x: number; y: number; w: number }>();
+    const terminalColors = new Map<string, string>();
     const busyTerminalIds = new Set<string>();
     for (const project of projects) {
       for (const worktree of project.worktrees) {
@@ -488,20 +493,33 @@ function XyFlowCanvasInner() {
             y: terminal.y,
             w: terminal.width,
           });
+          terminalColors.set(
+            terminal.id,
+            TERMINAL_TYPE_CONFIG[terminal.type]?.color ?? "var(--accent)",
+          );
           if (runtimeStates[terminal.id]?.status === "active") {
             busyTerminalIds.add(terminal.id);
           }
         }
       }
     }
-    return buildOrchestrationEdges({
-      links,
-      orchestratorIds,
-      sources,
-      terminalRects,
-      busyTerminalIds,
-    });
-  }, [links, orchestratorIds, projects, runtimeStates, sources]);
+    return [
+      ...buildOrchestrationEdges({
+        links,
+        orchestratorIds,
+        sources,
+        terminalRects,
+        busyTerminalIds,
+      }),
+      ...buildPipeEdges({
+        pipes,
+        sources,
+        terminalRects,
+        terminalColors,
+        busyTerminalIds,
+      }),
+    ];
+  }, [links, orchestratorIds, pipes, projects, runtimeStates, sources]);
 
   const wireIntent = useCallback(
     (connection: Parameters<typeof resolveWireIntent>[0]) => {
@@ -555,7 +573,12 @@ function XyFlowCanvasInner() {
   );
 
   const handleInit = useCallback(
-    (reactFlow: ReactFlowInstance<AnyCanvasFlowNode, OrchestrationFlowEdge>) => {
+    (
+      reactFlow: ReactFlowInstance<
+        AnyCanvasFlowNode,
+        OrchestrationFlowEdge | PipeFlowEdge
+      >,
+    ) => {
       useCanvasStore.getState().registerViewportAdapter({
         setViewport: (nextViewport, options) => {
           void reactFlow.setViewport(
