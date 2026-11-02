@@ -56,6 +56,7 @@ ekler; aşağıdaki liste commit sırasıyla aynıdır.
 44. [Test: köprü betiği](44-test-kopru-betigi.md) — tc.mjs sahte API'ye karşı: Gemini sessizlik, Codex tur sonu, konsey, tartışma
 45. [Pipeline bilgilendirmesi](45-pipeline-bilgilendirme.md) — kablo çekilince iki uç da kime bağlı olduğunu öğrenir; meşgulse bekler
 46. [Gemini başlatma düzeltmesi](46-gemini-baslatma.md) — --prompt-interactive ve otomatik onay için --yolo
+47. [Orkestratör türü](47-orkestrator-turu.md) — createOrchestratorInScene type: claude | codex | gemini
 
 ## Nasıl kullanılır
 

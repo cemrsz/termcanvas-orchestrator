@@ -177,10 +177,15 @@ function connectProjectAgents(orchestratorId: string, projectId: string) {
   }
 }
 
+/** Agent CLIs that can run the orchestrator (they all run shell commands). */
+export const ORCHESTRATOR_TYPES = ["claude", "codex", "gemini"] as const;
+export type OrchestratorType = (typeof ORCHESTRATOR_TYPES)[number];
+
 export async function createOrchestratorInScene(options: {
   projectId: string;
   worktreeId: string;
   position?: { x: number; y: number };
+  type?: OrchestratorType;
 }): Promise<TerminalData | null> {
   const project = useProjectStore
     .getState()
@@ -190,7 +195,7 @@ export async function createOrchestratorInScene(options: {
   );
   if (!project || !worktree) return null;
 
-  const base = createTerminal("claude");
+  const base = createTerminal(options.type ?? "claude");
   let startPrompt: string;
   try {
     ({ startPrompt } = await window.termcanvas.orchestrator.prepare(
