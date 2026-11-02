@@ -1016,6 +1016,18 @@ export interface TermCanvasAPI {
     clear: () => Promise<void>;
     onEntry: (callback: (entry: CommsEntry) => void) => () => void;
   };
+  bridge: {
+    /** Write an agent's BRIDGE.md + tc.mjs and get the brief to send it. */
+    prepare: (
+      terminalId: string,
+      worktreePath: string,
+      peers: { name: string; type: string }[],
+    ) => Promise<{
+      instructionsRelPath: string;
+      scriptRelPath: string;
+      briefPrompt: string;
+    }>;
+  };
   orchestrator: {
     prepare: (
       terminalId: string,

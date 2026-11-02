@@ -696,6 +696,18 @@ contextBridge.exposeInMainWorld("termcanvas", {
       return () => ipcRenderer.removeListener("comms:entry", listener);
     },
   },
+  bridge: {
+    prepare: (
+      terminalId: string,
+      worktreePath: string,
+      peers: { name: string; type: string }[],
+    ) =>
+      ipcRenderer.invoke("bridge:prepare", terminalId, worktreePath, peers) as Promise<{
+        instructionsRelPath: string;
+        scriptRelPath: string;
+        briefPrompt: string;
+      }>,
+  },
   orchestrator: {
     prepare: (terminalId: string, worktreePath: string) =>
       ipcRenderer.invoke(

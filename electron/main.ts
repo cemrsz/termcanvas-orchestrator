@@ -59,6 +59,8 @@ import {
 } from "./composer-submit";
 import {
   buildOrchestratorStartPrompt,
+  buildPipelineBriefPrompt,
+  writeAgentBridgeWorkspace,
   writeOrchestratorWorkspace,
 } from "./orchestrator-bridge";
 import { AiConnectorService } from "./ai-connector-service";
@@ -2053,6 +2055,30 @@ function setupIpc() {
   ipcMain.handle("comms:clear", () => {
     commsLog.clear();
   });
+
+  ipcMain.handle(
+    "bridge:prepare",
+    (
+      _event,
+      terminalId: string,
+      worktreePath: string,
+      peers: { name: string; type: string }[],
+    ) => {
+      const workspace = writeAgentBridgeWorkspace({
+        terminalId,
+        worktreePath,
+        portFile: PORT_FILE,
+      });
+      return {
+        instructionsRelPath: workspace.instructionsRelPath,
+        scriptRelPath: workspace.scriptRelPath,
+        briefPrompt: buildPipelineBriefPrompt(
+          workspace.instructionsRelPath,
+          Array.isArray(peers) ? peers : [],
+        ),
+      };
+    },
+  );
 
   ipcMain.handle(
     "orchestrator:prepare",
