@@ -36,6 +36,7 @@ ekler; aşağıdaki liste commit sırasıyla aynıdır.
 24. [Haberleşme akışı: IPC](24-haberlesme-ipc.md) — comms:entry yayını, list/clear ve AI Hub çağrılarının kaydı
 25. [Haberleşme akışı: store](25-haberlesme-store.md) — kablo nabzı, meşgul model sayacı ve okunmamış rozeti
 26. [Veri modeli: pipeline ve AI düğümü](26-pipeline-veri-modeli.md) — yönsüz pipeline kabloları, ai kaynak türü, BridgeManifest
+27. [Store: pipeline kuralları](27-pipeline-kurallari.md) — connectPipe/disconnectPipe, orkestratöre çevirince pipeline'lar link olur
 
 ## Nasıl kullanılır
 

@@ -4,6 +4,7 @@ import type { TerminalType } from "../types";
 import type {
   OrchestrationDocument,
   OrchestrationLink,
+  OrchestrationPipe,
   OrchestrationSource,
   OrchestrationSourceKind,
   OrchestrationTargetKind,
@@ -50,6 +51,13 @@ interface OrchestrationStore extends OrchestrationDocument {
     targetId: string,
   ) => boolean;
   disconnect: (linkId: string) => void;
+  /**
+   * Wire two nodes with a pipeline. One end must be an agent terminal (the
+   * caller checks terminal-ness); orchestrators and source↔source pairs are
+   * refused, as are duplicates in either direction.
+   */
+  connectPipe: (a: string, b: string) => string | null;
+  disconnectPipe: (pipeId: string) => void;
   restore: (doc: OrchestrationDocument | undefined) => void;
 }
 
@@ -71,13 +79,43 @@ export const useOrchestrationStore = create<OrchestrationStore>((set, get) => ({
 
   markOrchestrator: (terminalId) => {
     if (get().orchestratorIds.includes(terminalId)) return;
-    set((state) => ({
-      orchestratorIds: [...state.orchestratorIds, terminalId],
+    set((state) => {
       // An orchestrator is never a worker of another orchestrator.
-      links: state.links.filter(
+      const links = state.links.filter(
         (link) => !(link.targetKind === "terminal" && link.targetId === terminalId),
-      ),
-    }));
+      );
+      // Its pipelines become its links: the peers turn into its workers.
+      const pipes: OrchestrationPipe[] = [];
+      for (const pipe of state.pipes) {
+        const other = pipeOtherEnd(pipe, terminalId);
+        if (other === null) {
+          pipes.push(pipe);
+          continue;
+        }
+        const targetKind: OrchestrationTargetKind =
+          other in state.sources ? "source" : "terminal";
+        if (state.orchestratorIds.includes(other)) continue;
+        if (
+          links.some(
+            (link) =>
+              link.orchestratorId === terminalId && link.targetId === other,
+          )
+        ) {
+          continue;
+        }
+        links.push({
+          id: nextId("link"),
+          orchestratorId: terminalId,
+          targetKind,
+          targetId: other,
+        });
+      }
+      return {
+        orchestratorIds: [...state.orchestratorIds, terminalId],
+        links,
+        pipes,
+      };
+    });
     markDirty();
   },
 
@@ -126,6 +164,7 @@ export const useOrchestrationStore = create<OrchestrationStore>((set, get) => ({
         links: state.links.filter(
           (link) => !(link.targetKind === "source" && link.targetId === id),
         ),
+        pipes: state.pipes.filter((pipe) => pipeOtherEnd(pipe, id) === null),
       };
     });
     markDirty();
@@ -164,6 +203,28 @@ export const useOrchestrationStore = create<OrchestrationStore>((set, get) => ({
     markDirty();
   },
 
+  connectPipe: (a, b) => {
+    const state = get();
+    if (!a || !b || a === b) return null;
+    if (state.orchestratorIds.includes(a) || state.orchestratorIds.includes(b)) {
+      return null;
+    }
+    if (a in state.sources && b in state.sources) return null;
+    if (findPipe(state.pipes, a, b)) return null;
+    const pipe: OrchestrationPipe = { id: nextId("pipe"), a, b };
+    set({ pipes: [...state.pipes, pipe] });
+    markDirty();
+    return pipe.id;
+  },
+
+  disconnectPipe: (pipeId) => {
+    if (!get().pipes.some((pipe) => pipe.id === pipeId)) return;
+    set((state) => ({
+      pipes: state.pipes.filter((pipe) => pipe.id !== pipeId),
+    }));
+    markDirty();
+  },
+
   restore: (doc) => {
     set({
       orchestratorIds: doc?.orchestratorIds ?? [],
@@ -174,17 +235,49 @@ export const useOrchestrationStore = create<OrchestrationStore>((set, get) => ({
   },
 }));
 
+/** The other end of a pipe, or null when `nodeId` is not one of its ends. */
+export function pipeOtherEnd(
+  pipe: OrchestrationPipe,
+  nodeId: string,
+): string | null {
+  if (pipe.a === nodeId) return pipe.b;
+  if (pipe.b === nodeId) return pipe.a;
+  return null;
+}
+
+export function findPipe(
+  pipes: OrchestrationPipe[],
+  a: string,
+  b: string,
+): OrchestrationPipe | undefined {
+  return pipes.find(
+    (pipe) => (pipe.a === a && pipe.b === b) || (pipe.a === b && pipe.b === a),
+  );
+}
+
+/** Node ids wired to `nodeId` by a pipeline. */
+export function pipePeers(pipes: OrchestrationPipe[], nodeId: string): string[] {
+  const peers: string[] = [];
+  for (const pipe of pipes) {
+    const other = pipeOtherEnd(pipe, nodeId);
+    if (other !== null) peers.push(other);
+  }
+  return peers;
+}
+
 /**
- * True for orchestrators and the agents wired to them. Their titles are the
- * names the orchestrator routes work by, so they must stay stable.
+ * True for orchestrators, the agents wired to them and agents on a
+ * pipeline. Their titles are the names others address them by, so they must
+ * stay stable.
  */
 export function isOrchestratedTerminal(terminalId: string): boolean {
-  const { orchestratorIds, links } = useOrchestrationStore.getState();
+  const { orchestratorIds, links, pipes } = useOrchestrationStore.getState();
   return (
     orchestratorIds.includes(terminalId) ||
     links.some(
       (link) => link.targetKind === "terminal" && link.targetId === terminalId,
-    )
+    ) ||
+    pipes.some((pipe) => pipeOtherEnd(pipe, terminalId) !== null)
   );
 }
 
