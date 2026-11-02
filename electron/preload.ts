@@ -689,6 +689,8 @@ contextBridge.exposeInMainWorld("termcanvas", {
   comms: {
     list: (limit?: number) => ipcRenderer.invoke("comms:list", limit),
     clear: () => ipcRenderer.invoke("comms:clear"),
+    recordBrief: (to: unknown, text: string) =>
+      ipcRenderer.invoke("comms:record-brief", to, text),
     onEntry: (callback: (entry: unknown) => void) => {
       const listener = (_event: Electron.IpcRendererEvent, entry: unknown) =>
         callback(entry);

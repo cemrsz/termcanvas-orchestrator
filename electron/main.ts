@@ -2058,6 +2058,15 @@ function setupIpc() {
   ipcMain.handle("comms:clear", () => {
     commsLog.clear();
   });
+  ipcMain.handle("comms:record-brief", (_event, to: CommsParty, text: string) => {
+    if (!to || typeof to.id !== "string" || typeof text !== "string") return;
+    commsLog.record({
+      kind: "brief",
+      from: USER_PARTY,
+      to: { kind: "agent", id: to.id, name: String(to.name ?? ""), type: to.type },
+      text,
+    });
+  });
 
   ipcMain.handle(
     "bridge:prepare",

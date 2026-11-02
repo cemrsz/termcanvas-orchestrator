@@ -39,6 +39,124 @@ function notifyError(message: string) {
   useNotificationStore.getState().notify("error", message);
 }
 
+function isAgentNode(nodeId: string): TerminalLocation | null {
+  const location = findTerminal(nodeId);
+  return location && isAgentTerminalType(location.terminal.type) ? location : null;
+}
+
+/** Agent conversations already told about their pipelines (terminal:session). */
+const briefedConversations = new Set<string>();
+const pendingBriefs = new Map<string, ReturnType<typeof setTimeout>>();
+const BRIEF_POLL_MS = 2_000;
+const BRIEF_GIVE_UP_MS = 3 * 60_000;
+
+function conversationKey(terminal: TerminalData): string {
+  const live = resolveTerminalWithRuntimeState(terminal);
+  return `${terminal.id}:${live.sessionId ?? ""}`;
+}
+
+/**
+ * Tell an agent who it is wired to, so "ask Gemini …" works right away.
+ * Writes its bridge files, then pastes a one-line brief once per
+ * conversation, waiting until the agent is not busy printing.
+ */
+export async function briefAgentAboutPipes(
+  terminalId: string,
+  options: { force?: boolean } = {},
+): Promise<void> {
+  const location = isAgentNode(terminalId);
+  if (!location || !window.termcanvas?.bridge) return;
+  const manifest = buildBridgeManifest(terminalId);
+  if (!manifest || manifest.self.role === "orchestrator") return;
+  const peers = [
+    ...manifest.agents.map((agent) => ({ name: agent.name, type: agent.type })),
+    ...manifest.models.map((model) => ({
+      name: model.name,
+      type: `${model.connectorName} model`,
+    })),
+    ...manifest.sources.map((source) => ({ name: source.name, type: source.kind })),
+  ];
+  if (peers.length === 0) return;
+
+  let briefPrompt: string;
+  try {
+    ({ briefPrompt } = await window.termcanvas.bridge.prepare(
+      terminalId,
+      location.worktree.path,
+      peers,
+    ));
+  } catch (error) {
+    notifyError(
+      `Could not prepare the pipeline bridge: ${error instanceof Error ? error.message : String(error)}`,
+    );
+    return;
+  }
+  if (!options.force && briefedConversations.has(conversationKey(location.terminal))) {
+    return;
+  }
+
+  const existing = pendingBriefs.get(terminalId);
+  if (existing) clearTimeout(existing);
+  const deadline = Date.now() + BRIEF_GIVE_UP_MS;
+  const attempt = async () => {
+    pendingBriefs.delete(terminalId);
+    const current = findTerminal(terminalId);
+    if (!current) return;
+    const live = resolveTerminalWithRuntimeState(current.terminal);
+    if (live.ptyId === null) return; // Not running: it gets briefed when wired again.
+    if (live.status === "active" && Date.now() < deadline) {
+      pendingBriefs.set(terminalId, setTimeout(() => void attempt(), BRIEF_POLL_MS));
+      return;
+    }
+    const result = await window.termcanvas.composer.submit({
+      terminalId,
+      ptyId: live.ptyId,
+      terminalType: current.terminal.type,
+      worktreePath: current.worktree.path,
+      text: briefPrompt,
+      images: [],
+    });
+    if (!result.ok) {
+      notifyError(
+        `Could not brief ${getTerminalDisplayName(current.terminal)}: ${result.detail ?? result.error ?? "unknown error"}`,
+      );
+      return;
+    }
+    briefedConversations.add(conversationKey(current.terminal));
+    void window.termcanvas.comms?.recordBrief?.(
+      {
+        kind: "agent",
+        id: terminalId,
+        name: getTerminalDisplayName(current.terminal),
+        type: current.terminal.type,
+      },
+      briefPrompt,
+    );
+  };
+  await attempt();
+}
+
+/**
+ * Wire two canvas nodes with a pipeline and brief the agents on it. At
+ * least one end must be an agent terminal; shells are never wired.
+ */
+export function connectPipeInScene(a: string, b: string): string | null {
+  const store = useOrchestrationStore.getState();
+  const ends = [a, b].map((id) => ({
+    id,
+    agent: isAgentNode(id),
+    source: store.sources[id],
+  }));
+  if (ends.some((end) => !end.agent && !end.source)) return null;
+  if (!ends.some((end) => end.agent)) return null;
+  const pipeId = store.connectPipe(a, b);
+  if (!pipeId) return null;
+  for (const end of ends) {
+    if (end.agent) void briefAgentAboutPipes(end.id);
+  }
+  return pipeId;
+}
+
 /**
  * Wire every agent terminal of the project to the orchestrator, so a fresh
  * orchestrator starts out "connected to my agents".

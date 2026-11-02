@@ -1014,6 +1014,8 @@ export interface TermCanvasAPI {
   comms: {
     list: (limit?: number) => Promise<CommsEntry[]>;
     clear: () => Promise<void>;
+    /** Put "TermCanvas briefed <agent> about its pipelines" in the feed. */
+    recordBrief?: (to: CommsParty, text: string) => Promise<void>;
     onEntry: (callback: (entry: CommsEntry) => void) => () => void;
   };
   bridge: {

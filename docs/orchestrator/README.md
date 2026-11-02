@@ -54,6 +54,7 @@ ekler; aşağıdaki liste commit sırasıyla aynıdır.
 42. [Köprü CLI: kum havuzu ipuçları](42-kum-havuzu-ipuclari.md) — EPERM/ECONNREFUSED için yükseltilmiş izinle tekrar dene
 43. [ORCHESTRATOR.md: modeller](43-orkestrator-talimati.md) — modeller düşünmek için; council/discuss ne zaman kullanılır
 44. [Test: köprü betiği](44-test-kopru-betigi.md) — tc.mjs sahte API'ye karşı: Gemini sessizlik, Codex tur sonu, konsey, tartışma
+45. [Pipeline bilgilendirmesi](45-pipeline-bilgilendirme.md) — kablo çekilince iki uç da kime bağlı olduğunu öğrenir; meşgulse bekler
 
 ## Nasıl kullanılır
 

@@ -134,3 +134,18 @@ test("an orchestrator sees its links; the old manifest shape is kept", () => {
   assert.deepEqual(manifest.models.map((m) => m.connector), ["gemini"]);
   assert.deepEqual(manifest.sources, []);
 });
+
+test("connectPipeInScene wires agents and models but never shells", async () => {
+  setup();
+  const { connectPipeInScene } = await import("../src/actions/orchestrationSceneActions.ts");
+  const store = useOrchestrationStore.getState();
+  const model = store.addAiNode("gemini", { x: 0, y: 0 });
+  const otherModel = store.addAiNode("claude", { x: 0, y: 0 });
+
+  assert.ok(connectPipeInScene("claude", "codex"));
+  assert.ok(connectPipeInScene("gemini", model));
+  assert.equal(connectPipeInScene("claude", "sh"), null, "shells are not peers");
+  assert.equal(connectPipeInScene(model, otherModel), null, "needs an agent end");
+  assert.equal(connectPipeInScene("claude", "nope"), null, "unknown node");
+  assert.equal(useOrchestrationStore.getState().pipes.length, 2);
+});
