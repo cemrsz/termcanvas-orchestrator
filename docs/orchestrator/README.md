@@ -39,6 +39,7 @@ ekler; aşağıdaki liste commit sırasıyla aynıdır.
 27. [Store: pipeline kuralları](27-pipeline-kurallari.md) — connectPipe/disconnectPipe, orkestratöre çevirince pipeline'lar link olur
 28. [Store: AI düğümü](28-ai-dugumu-store.md) — addAiNode / updateAiConfig; ad bağlayıcıyı izler
 29. [Kalıcılık: pipeline ve AI düğümü](29-pipeline-kalicilik.md) — doğrulayarak okuma, ölü uçları ayıklayarak kaydetme
+30. [Test: pipeline](30-test-pipeline.md) — store kuralları, orkestratöre dönüşüm, kayıt/geri yükleme
 
 ## Nasıl kullanılır
 
