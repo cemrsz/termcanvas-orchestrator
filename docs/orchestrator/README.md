@@ -30,6 +30,7 @@ ekler; aşağıdaki liste commit sırasıyla aynıdır.
 18. [Bağlayıcılar: CLI](18-baglayici-cli.md) — abonelik girişiyle, anahtarsız tek seferlik CLI çağrısı
 19. [Bağlayıcı servisi](19-baglayici-servisi.md) — şifreli anahtarlar, ortam değişkenleri, CLI kontrolü, model listesi
 20. [Bağlayıcılar: soru sorma](20-baglayici-cagirma.md) — invoke(): model çözümü, yerel sunucu, CLI hata ve süre aşımı
+21. [Test: bağlayıcı servisi](21-baglayici-testleri.md) — şifreli anahtar, ortam değişkeni, API ve CLI çağrıları
 
 ## Nasıl kullanılır
 
