@@ -60,13 +60,19 @@ import { recordRenderDiagnostic } from "./renderDiagnostics";
 import { resetWebGL } from "./webglContextPool";
 import { refreshRegisteredTerminalViewports } from "./terminalRegistry";
 import {
+  findPipe,
   isAgentTerminalType,
+  pipePeers,
   useOrchestrationStore,
 } from "../stores/orchestrationStore";
 import {
+  briefAgentAboutPipes,
+  connectPipeInScene,
   makeTerminalOrchestrator,
   removeOrchestratorRole,
 } from "../actions/orchestrationSceneActions";
+import { getAiConnector } from "../../shared/ai-connectors";
+import { SOURCE_KIND_META } from "../canvas/orchestrationFlow";
 import type { MenuItem } from "../components/ContextMenu";
 
 interface Props {
@@ -203,45 +209,6 @@ export function TerminalTile({
   );
   const orchestrationLinks = useOrchestrationStore((state) => state.links);
   const isOrchestrator = orchestratorIds.includes(terminal.id);
-  const orchestrationMenuItems: MenuItem[] = !isAgentTerminalType(terminal.type)
-    ? []
-    : isOrchestrator
-      ? [
-          { type: "separator" },
-          {
-            label: "Remove Orchestrator Role",
-            onClick: () => removeOrchestratorRole(terminal.id),
-          },
-        ]
-      : [
-          { type: "separator" },
-          ...orchestratorIds.map((orchestratorId, index): MenuItem => {
-            const link = orchestrationLinks.find(
-              (candidate) =>
-                candidate.orchestratorId === orchestratorId &&
-                candidate.targetKind === "terminal" &&
-                candidate.targetId === terminal.id,
-            );
-            const suffix = orchestratorIds.length > 1 ? ` #${index + 1}` : "";
-            return link
-              ? {
-                  label: `Disconnect from Orchestrator${suffix}`,
-                  onClick: () =>
-                    useOrchestrationStore.getState().disconnect(link.id),
-                }
-              : {
-                  label: `Connect to Orchestrator${suffix}`,
-                  onClick: () =>
-                    useOrchestrationStore
-                      .getState()
-                      .connect(orchestratorId, "terminal", terminal.id),
-                };
-          }),
-          {
-            label: "Make Orchestrator",
-            onClick: () => void makeTerminalOrchestrator(terminal.id),
-          },
-        ];
   const [contextMenu, setContextMenu] = useState<{
     x: number;
     y: number;
@@ -324,6 +291,124 @@ export function TerminalTile({
   } | null>(null);
 
   const t = useT();
+
+  /** Orchestrator and pipeline entries; built when the menu opens. */
+  const buildOrchestrationMenuItems = (): MenuItem[] => {
+    if (!isAgentTerminalType(terminal.type)) return [];
+    if (isOrchestrator) {
+      return [
+        { type: "separator" },
+        {
+          label: t["terminal.menu.removeOrchestrator"],
+          onClick: () => removeOrchestratorRole(terminal.id),
+        },
+      ];
+    }
+    const { pipes, sources } = useOrchestrationStore.getState();
+    const piped = new Set(pipePeers(pipes, terminal.id));
+    const candidates: { id: string; name: string; color: string }[] = [];
+    for (const project of useProjectStore.getState().projects) {
+      for (const worktree of project.worktrees) {
+        for (const other of worktree.terminals) {
+          if (other.id === terminal.id || other.stashed) continue;
+          if (!isAgentTerminalType(other.type)) continue;
+          if (orchestratorIds.includes(other.id)) continue;
+          candidates.push({
+            id: other.id,
+            name: other.customTitle?.trim() || other.title,
+            color: TERMINAL_TYPE_CONFIG[other.type]?.color ?? "var(--accent)",
+          });
+        }
+      }
+    }
+    for (const source of Object.values(sources)) {
+      candidates.push({
+        id: source.id,
+        name: source.name,
+        color:
+          source.kind === "ai" && source.ai
+            ? (getAiConnector(source.ai.connector)?.color ?? "var(--accent)")
+            : (SOURCE_KIND_META[source.kind]?.color ?? "var(--accent)"),
+      });
+    }
+    const pipeTargets = candidates.filter(
+      (candidate) => !piped.has(candidate.id) && !(candidate.id in sources && sources[candidate.id].kind !== "ai"),
+    );
+    const pipedPeers = candidates.filter((candidate) => piped.has(candidate.id));
+
+    return [
+      { type: "separator" },
+      ...orchestratorIds.map((orchestratorId, index): MenuItem => {
+        const link = orchestrationLinks.find(
+          (candidate) =>
+            candidate.orchestratorId === orchestratorId &&
+            candidate.targetKind === "terminal" &&
+            candidate.targetId === terminal.id,
+        );
+        const suffix = orchestratorIds.length > 1 ? ` #${index + 1}` : "";
+        return link
+          ? {
+              label: t["terminal.menu.disconnectOrchestrator"](suffix),
+              onClick: () => useOrchestrationStore.getState().disconnect(link.id),
+            }
+          : {
+              label: t["terminal.menu.connectOrchestrator"](suffix),
+              onClick: () =>
+                useOrchestrationStore
+                  .getState()
+                  .connect(orchestratorId, "terminal", terminal.id),
+            };
+      }),
+      {
+        label: t["terminal.menu.makeOrchestrator"],
+        onClick: () => void makeTerminalOrchestrator(terminal.id),
+      },
+      ...(pipeTargets.length > 0
+        ? [
+            {
+              type: "submenu" as const,
+              label: t["terminal.menu.pipeTo"],
+              items: pipeTargets.map(
+                (candidate): MenuItem => ({
+                  label: candidate.name,
+                  color: candidate.color,
+                  onClick: () => {
+                    connectPipeInScene(terminal.id, candidate.id);
+                  },
+                }),
+              ),
+            },
+          ]
+        : []),
+      ...(pipedPeers.length > 0
+        ? [
+            {
+              type: "submenu" as const,
+              label: t["terminal.menu.unpipe"],
+              items: pipedPeers.map(
+                (candidate): MenuItem => ({
+                  label: candidate.name,
+                  color: candidate.color,
+                  danger: true,
+                  onClick: () => {
+                    const pipe = findPipe(
+                      useOrchestrationStore.getState().pipes,
+                      terminal.id,
+                      candidate.id,
+                    );
+                    if (pipe) useOrchestrationStore.getState().disconnectPipe(pipe.id);
+                  },
+                }),
+              ),
+            },
+            {
+              label: t["terminal.menu.brief"],
+              onClick: () => void briefAgentAboutPipes(terminal.id, { force: true }),
+            },
+          ]
+        : []),
+    ];
+  };
   const config = TYPE_CONFIG[terminal.type] ?? {
     color: "#888",
     label: terminal.type,
@@ -1398,7 +1483,7 @@ export function TerminalTile({
                     },
                   ]
                 : []),
-              ...orchestrationMenuItems,
+              ...buildOrchestrationMenuItems(),
             ]}
             onClose={() => setContextMenu(null)}
           />,

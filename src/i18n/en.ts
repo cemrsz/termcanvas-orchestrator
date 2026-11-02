@@ -1061,6 +1061,17 @@ export const en = {
   "ai.node.lastAnswer": "Last answer",
   "ai.node.lastError": "Last error",
 
+  // Terminal title-bar menu: orchestrator and pipelines
+  "terminal.menu.connectOrchestrator": (suffix: string) =>
+    `Connect to Orchestrator${suffix}`,
+  "terminal.menu.disconnectOrchestrator": (suffix: string) =>
+    `Disconnect from Orchestrator${suffix}`,
+  "terminal.menu.makeOrchestrator": "Make Orchestrator",
+  "terminal.menu.removeOrchestrator": "Remove Orchestrator Role",
+  "terminal.menu.pipeTo": "Wire pipeline to",
+  "terminal.menu.unpipe": "Cut pipeline to",
+  "terminal.menu.brief": "Tell it who it is wired to",
+
   // Canvas right-click menu
   "canvas.menu.new": (label: string) => `New ${label}`,
   "canvas.menu.newOrchestrator": "New Orchestrator",
