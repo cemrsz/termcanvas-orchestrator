@@ -28,6 +28,7 @@ ekler; aşağıdaki liste commit sırasıyla aynıdır.
 16. [Bağlayıcı kataloğu](16-baglayici-katalogu.md) — Claude, Gemini, ChatGPT ve diğer sağlayıcılar; API ve CLI taşıma yolları
 17. [Bağlayıcılar: API](17-baglayici-http.md) — üç protokol için istek kurma, cevap okuma ve okunur hata mesajları
 18. [Bağlayıcılar: CLI](18-baglayici-cli.md) — abonelik girişiyle, anahtarsız tek seferlik CLI çağrısı
+19. [Bağlayıcı servisi](19-baglayici-servisi.md) — şifreli anahtarlar, ortam değişkenleri, CLI kontrolü, model listesi
 
 ## Nasıl kullanılır
 
