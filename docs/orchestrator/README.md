@@ -62,6 +62,7 @@ ekler; aşağıdaki liste commit sırasıyla aynıdır.
 50. [Canvas: pipeline kablosu](50-pipeline-kablosu.md) — iki agent renginde geçiş, ⇄/× etiketi, meşgulken akan çizgi
 51. [Canvas: kablo nabzı](51-kablo-nabzi.md) — gönderenden alıcıya akan parlak nokta; hareketi azalt ayarına uyar
 52. [Arayüz: bağlayıcı store'u](52-baglayici-store.md) — AI düğümü ve Hub için ortak durum; anahtar asla renderer'a gelmez
+53. [Canvas: AI düğümü](53-ai-dugumu.md) — sağlayıcı seçimi, model önerileri, hazır olma durumu, persona
 
 ## Nasıl kullanılır
 

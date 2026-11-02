@@ -99,14 +99,14 @@ export interface SourceNodeData {
   [key: string]: unknown;
 }
 
-export type SourceFlowNode = Node<SourceNodeData, "orchestrationSource">;
+export type SourceFlowNode = Node<SourceNodeData, "orchestrationSource" | "aiModel">;
 
 export function buildSourceFlowNodes(
   sources: Record<string, OrchestrationSource>,
 ): SourceFlowNode[] {
   return Object.values(sources).map((source) => ({
     id: source.id,
-    type: "orchestrationSource",
+    type: source.kind === "ai" ? "aiModel" : "orchestrationSource",
     position: { x: source.x, y: source.y },
     data: { sourceId: source.id },
     style: { width: source.w },

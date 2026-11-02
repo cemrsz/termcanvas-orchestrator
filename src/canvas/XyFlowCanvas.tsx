@@ -670,7 +670,7 @@ function XyFlowCanvasInner() {
         Math.round(node.position.x / SNAP_GRID[0]) * SNAP_GRID[0];
       const snappedY =
         Math.round(node.position.y / SNAP_GRID[1]) * SNAP_GRID[1];
-      if (node.type === "orchestrationSource") {
+      if (node.type === "orchestrationSource" || node.type === "aiModel") {
         useOrchestrationStore
           .getState()
           .updateSource(node.id, { x: snappedX, y: snappedY });

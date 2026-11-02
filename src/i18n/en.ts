@@ -1028,6 +1028,31 @@ export const en = {
   shortcut_prev_canvas: "Prev canvas",
   shortcut_open_canvas_manager: "Open canvas manager",
   settings_shortcut_group_canvases: "Canvases",
+
+  // AI model nodes on the canvas
+  "ai.node.provider": "Provider",
+  "ai.node.model": "Model",
+  "ai.node.modelDefault": (model: string) =>
+    model ? `default: ${model}` : "server default",
+  "ai.node.via": "Via",
+  "ai.node.api": "API",
+  "ai.node.cli": "CLI",
+  "ai.node.noCli": (name: string) => `${name} has no CLI; use the API`,
+  "ai.node.rolePlaceholder":
+    "Role, e.g. strict code reviewer; answer in bullet points",
+  "ai.node.keySaved": (hint: string) => `key ${hint}`,
+  "ai.node.keyEnv": (name: string) => `key from ${name}`,
+  "ai.node.local": "local server",
+  "ai.node.noKey": "no API key",
+  "ai.node.cliReady": (version: string) => `CLI ${version}`,
+  "ai.node.cliMissing": "CLI not installed",
+  "ai.node.cliCheck": "Check CLI",
+  "ai.node.wired": (names: string) => `Wired to ${names}`,
+  "ai.node.wiredCount": (count: number) =>
+    `Wired to ${count} agent${count === 1 ? "" : "s"}`,
+  "ai.node.cliDefault": "CLI's default model",
+  "ai.node.notWired": "Not wired: drag from an agent's port to here",
+  "ai.node.remove": "Remove AI node",
 } as const;
 
 export type TranslationKey = keyof typeof en;

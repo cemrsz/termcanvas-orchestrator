@@ -32,6 +32,7 @@ import {
   type SourceFlowNode,
 } from "./orchestrationFlow";
 import { TERMINAL_TYPE_CONFIG } from "../terminal/terminalTypeConfig";
+import { AiNode } from "./AiNode";
 
 const SNAP_GRID = 10;
 
@@ -341,6 +342,7 @@ function TerminalNode({ data }: NodeProps<TerminalFlowNode>) {
 export const xyflowNodeTypes = {
   terminal: TerminalNode,
   ...orchestrationNodeTypes,
+  aiModel: AiNode,
 } satisfies NodeTypes;
 
 export type AnyCanvasFlowNode = CanvasFlowNode | SourceFlowNode;
