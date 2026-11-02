@@ -18,16 +18,25 @@ import {
   type AiConnectorId,
   type AiConnectorPlugin,
   type AiConnectorStatus,
+  type AiInvokeRequest,
+  type AiInvokeResult,
 } from "../shared/ai-connectors";
 import {
   AiConnectorError,
+  buildApiCall,
   buildModelListCall,
   describeHttpError,
+  parseApiReply,
   parseModelList,
   trimSlash,
   type ApiCall,
 } from "./ai-connector-http";
-import { cleanCliOutput, type CliRunResult } from "./ai-connector-cli";
+import {
+  buildCliCall,
+  cleanCliOutput,
+  tailLines,
+  type CliRunResult,
+} from "./ai-connector-cli";
 
 export const DEFAULT_AI_TIMEOUT_MS = 180_000;
 export const MAX_AI_TIMEOUT_MS = 600_000;
@@ -166,7 +175,7 @@ export class AiConnectorService {
       env = {};
     }
     for (const name of plugin.keyEnv) {
-      const value = env[name]?.trim() || process.env[name]?.trim();
+      const value = env[name]?.trim();
       if (value) return { name, value };
     }
     return null;
@@ -361,5 +370,169 @@ export class AiConnectorService {
       );
     }
     return [...new Set(parseModelList(plugin.protocol, json))].sort();
+  }
+
+  /** Ask one connector one question, over its API or its CLI. */
+  async invoke(request: AiInvokeRequest): Promise<AiInvokeResult> {
+    const plugin = this.plugin(request.connector);
+    if (!request.prompt?.trim()) {
+      throw new AiConnectorError("unknown", "The prompt is empty.");
+    }
+    const timeoutMs = clampTimeout(request.timeoutMs);
+    return request.transport === "cli"
+      ? this.invokeCli(plugin, request, timeoutMs)
+      : this.invokeApi(plugin, request, timeoutMs);
+  }
+
+  private async invokeApi(
+    plugin: AiConnectorPlugin,
+    request: AiInvokeRequest,
+    timeoutMs: number,
+  ): Promise<AiInvokeResult> {
+    const baseURL = this.baseURLFor(plugin, request.baseURL);
+    if (!baseURL) {
+      throw new AiConnectorError(
+        "no-base-url",
+        `${plugin.name}: set the server URL on the node or in the AI Hub.`,
+      );
+    }
+    const apiKey = await this.resolveKey(plugin);
+    if (plugin.keyRequired && !apiKey) {
+      throw new AiConnectorError("no-key", this.noKeyMessage(plugin));
+    }
+    const started = this.deps.now();
+    let model = resolveModel(plugin, request.model, this.entry(plugin.id).model);
+    if (!model) {
+      // Local servers: use whatever model is loaded.
+      const models = await this.listModels(plugin.id, baseURL).catch(
+        () => [] as string[],
+      );
+      model = models[0] ?? "";
+      if (!model) {
+        throw new AiConnectorError(
+          "no-model",
+          `${plugin.name}: no model is set and the server lists none.`,
+        );
+      }
+    }
+    const call = buildApiCall(plugin, {
+      baseURL,
+      apiKey,
+      model,
+      system: request.system,
+      prompt: request.prompt,
+      maxTokens: request.maxTokens,
+    });
+    const response = await this.fetchWithTimeout(call, timeoutMs, plugin);
+    const body = await response.text();
+    if (!response.ok) {
+      throw new AiConnectorError(
+        "http",
+        describeHttpError(plugin, response.status, body),
+        response.status,
+      );
+    }
+    let json: unknown;
+    try {
+      json = JSON.parse(body);
+    } catch {
+      throw new AiConnectorError(
+        "bad-response",
+        `${plugin.name} did not return JSON: ${body.slice(0, 200)}`,
+      );
+    }
+    const parsed = parseApiReply(plugin.protocol, json);
+    return {
+      text: parsed.text.trim(),
+      model: parsed.model ?? model,
+      transport: "api",
+      latencyMs: this.deps.now() - started,
+      usage: parsed.usage,
+    };
+  }
+
+  private async invokeCli(
+    plugin: AiConnectorPlugin,
+    request: AiInvokeRequest,
+    timeoutMs: number,
+  ): Promise<AiInvokeResult> {
+    const cli = plugin.cli;
+    if (!cli) {
+      throw new AiConnectorError(
+        "no-cli",
+        `${plugin.name} has no CLI transport. Switch it to API.`,
+      );
+    }
+    if (!(await this.deps.resolveCli(cli.command))) {
+      throw new AiConnectorError(
+        "cli-missing",
+        `${cli.command} is not installed. Install it with: ${cli.install}`,
+      );
+    }
+    // A CLI picks its own default model; only pass one the user chose.
+    const model =
+      request.model?.trim() || this.entry(plugin.id).model?.trim() || "";
+    const outputFile =
+      plugin.id === "chatgpt"
+        ? path.join(
+            this.deps.tmpDir(),
+            `termcanvas-codex-${process.pid}-${this.deps.now()}-${Math.random()
+              .toString(36)
+              .slice(2, 8)}.txt`,
+          )
+        : undefined;
+    const call = buildCliCall(plugin, {
+      model,
+      prompt: request.prompt,
+      system: request.system,
+      outputFile,
+    });
+    const cwd =
+      request.cwd && fs.existsSync(request.cwd) ? request.cwd : os.homedir();
+    const started = this.deps.now();
+    let result: CliRunResult;
+    try {
+      result = await this.deps.runCli(call.command, call.args, {
+        cwd,
+        stdin: call.stdin,
+        timeoutMs,
+      });
+    } catch (error) {
+      throw new AiConnectorError(
+        "cli-failed",
+        `${cli.command} could not start: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+    let text = "";
+    if (call.outputFile) {
+      try {
+        text = fs.readFileSync(call.outputFile, "utf-8");
+      } catch {
+        text = "";
+      }
+      fs.rmSync(call.outputFile, { force: true });
+    }
+    text = cleanCliOutput(text.trim() ? text : result.stdout);
+    if (result.timedOut) {
+      throw new AiConnectorError(
+        "timeout",
+        `${cli.command} did not finish within ${Math.round(timeoutMs / 1000)}s.`,
+      );
+    }
+    if (result.code !== 0 || !text) {
+      const stderr = tailLines(result.stderr, 6);
+      throw new AiConnectorError(
+        "cli-failed",
+        `${cli.command} exited with code ${result.code ?? "?"}` +
+          (stderr ? `: ${stderr}` : text ? "" : " without output") +
+          `. Is ${cli.command} logged in? Run it once in a terminal.`,
+      );
+    }
+    return {
+      text,
+      model: model || `${cli.command} default`,
+      transport: "cli",
+      latencyMs: this.deps.now() - started,
+    };
   }
 }

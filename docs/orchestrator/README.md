@@ -29,6 +29,7 @@ ekler; aşağıdaki liste commit sırasıyla aynıdır.
 17. [Bağlayıcılar: API](17-baglayici-http.md) — üç protokol için istek kurma, cevap okuma ve okunur hata mesajları
 18. [Bağlayıcılar: CLI](18-baglayici-cli.md) — abonelik girişiyle, anahtarsız tek seferlik CLI çağrısı
 19. [Bağlayıcı servisi](19-baglayici-servisi.md) — şifreli anahtarlar, ortam değişkenleri, CLI kontrolü, model listesi
+20. [Bağlayıcılar: soru sorma](20-baglayici-cagirma.md) — invoke(): model çözümü, yerel sunucu, CLI hata ve süre aşımı
 
 ## Nasıl kullanılır
 
