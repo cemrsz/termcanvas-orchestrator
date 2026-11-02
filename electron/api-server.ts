@@ -25,10 +25,34 @@ import {
   writeAgentBridgeWorkspace,
 } from "./orchestrator-bridge";
 import { PipelineGuard, framePipelineMessage } from "./pipeline-guard";
+import type { CommsLog } from "./comms-log";
+import { AiConnectorError } from "./ai-connector-http";
+import { MAX_AI_TIMEOUT_MS } from "./ai-connector-service";
+import type {
+  AiInvokeRequest,
+  AiInvokeResult,
+} from "../shared/ai-connectors";
+import type { CommsParty } from "../shared/comms";
 import type {
   BridgeAgent,
   BridgeManifest,
+  BridgeModel,
 } from "../src/types/orchestration";
+
+/** How a wired model is told who it is and who is asking. */
+export function buildModelSystemPrompt(
+  model: Pick<BridgeModel, "name" | "persona">,
+  caller: { title: string; type: string },
+): string {
+  const persona = model.persona.trim();
+  return (
+    `You are ${model.name}, an AI model wired into the user's TermCanvas canvas. ` +
+    `${caller.title} (${caller.type}), an AI agent working for the user, is consulting you. ` +
+    "You cannot run tools or see files: rely on what the message contains. " +
+    "Answer directly and concisely, in the language of the request." +
+    (persona ? `\n\nYour role: ${persona}` : "")
+  );
+}
 
 interface BridgeScope {
   /** The calling agent's terminal id. */
@@ -46,6 +70,8 @@ interface ApiServerDeps {
   taskStore: PinStore;
   /** Port file the bridge scripts read (for receivers' bridge files). */
   portFile: string;
+  ai: { invoke: (request: AiInvokeRequest) => Promise<AiInvokeResult> };
+  comms: CommsLog;
 }
 
 export class ApiServer {
@@ -85,6 +111,10 @@ export class ApiServer {
     const pathname = url.pathname;
 
     res.setHeader("Content-Type", "application/json");
+    // Model calls can take minutes; the 30 s idle timeout would cut them.
+    if (method === "POST" && /\/model$/.test(pathname)) {
+      req.socket.setTimeout(MAX_AI_TIMEOUT_MS + 30_000);
+    }
 
     try {
       const body =
@@ -224,7 +254,7 @@ export class ApiServer {
     // /bridge/<terminalId>/… serves any wired agent; /orchestrator/<id>/…
     // is the same API restricted to orchestrators (older bridge scripts).
     const bridgeMatch = pathname.match(
-      /^\/(bridge|orchestrator)\/([^/]+)(?:\/(agent|send|reply))?$/,
+      /^\/(bridge|orchestrator)\/([^/]+)(?:\/(agent|send|reply|model))?$/,
     );
     if (bridgeMatch) {
       const scope: BridgeScope = {
@@ -244,6 +274,7 @@ export class ApiServer {
       if (method === "GET" && action === "reply") {
         return this.bridgeReply(scope, url.searchParams.get("agent"));
       }
+      if (method === "POST" && action === "model") return this.bridgeModel(scope, body);
     }
 
     throw Object.assign(new Error("Not found"), { status: 404 });
@@ -784,6 +815,132 @@ export class ApiServer {
       );
     }
     return { ok: true, agent: { id: agent.id, name: agent.name } };
+  }
+
+  /** Resolve M1 / id / name / connector ("gemini") among wired models. */
+  private resolveBridgeModel(
+    manifest: BridgeManifest,
+    ref: string | null | undefined,
+  ): BridgeModel {
+    const models = manifest.models;
+    const value = (ref ?? "").trim();
+    if (!value) {
+      throw Object.assign(new Error("model is required"), { status: 400 });
+    }
+    const numbered = /^M?(\d+)$/i.exec(value);
+    if (numbered) {
+      const byIndex = models[parseInt(numbered[1], 10) - 1];
+      if (byIndex) return byIndex;
+    }
+    const lower = value.toLowerCase();
+    const exact = models.filter(
+      (model) => model.id === value || model.name.toLowerCase() === lower,
+    );
+    if (exact.length === 1) return exact[0];
+    const loose = models.filter(
+      (model) =>
+        model.connector === lower ||
+        model.connectorName.toLowerCase() === lower ||
+        model.name.toLowerCase().includes(lower),
+    );
+    if (exact.length === 0 && loose.length === 1) return loose[0];
+    const wired =
+      models.map((model, i) => `M${i + 1} ${model.name}`).join(", ") || "none";
+    throw Object.assign(
+      new Error(`No single wired model matches '${value}'. Wired models: ${wired}`),
+      { status: 404 },
+    );
+  }
+
+  private async bridgeModel(scope: BridgeScope, body: any) {
+    const prompt = typeof body?.prompt === "string" ? body.prompt : body?.text;
+    if (typeof prompt !== "string" || !prompt.trim()) {
+      throw Object.assign(new Error("prompt is required"), { status: 400 });
+    }
+    const manifest = await this.loadBridgeManifest(scope);
+    const model = this.resolveBridgeModel(manifest, body?.model);
+    const caller: CommsParty = {
+      kind: "agent",
+      id: manifest.self.id,
+      name: manifest.self.title,
+      type: manifest.self.type,
+    };
+    const callee: CommsParty = {
+      kind: "model",
+      id: model.id,
+      name: model.name,
+      type: model.connector,
+    };
+    const label = typeof body?.label === "string" ? body.label : undefined;
+    const via = manifest.self.role === "orchestrator" ? "orchestrator" : "pipeline";
+    const correlationId = `ask-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
+    this.deps.comms.record({
+      kind: "ask",
+      from: caller,
+      to: callee,
+      text: prompt,
+      correlationId,
+      meta: { label, transport: model.transport, via },
+    });
+
+    const timeoutSec = Number(body?.timeoutSec);
+    try {
+      const result = await this.deps.ai.invoke({
+        connector: model.connector,
+        transport: model.transport,
+        model: model.model,
+        baseURL: model.baseURL || undefined,
+        system: buildModelSystemPrompt(model, manifest.self),
+        prompt,
+        cwd: manifest.self.worktreePath,
+        timeoutMs: Number.isFinite(timeoutSec) && timeoutSec > 0 ? timeoutSec * 1000 : undefined,
+      });
+      this.deps.comms.record({
+        kind: "answer",
+        from: callee,
+        to: caller,
+        text: result.text,
+        correlationId,
+        meta: {
+          label,
+          via,
+          latencyMs: result.latencyMs,
+          inputTokens: result.usage?.inputTokens,
+          outputTokens: result.usage?.outputTokens,
+          model: result.model,
+          transport: result.transport,
+        },
+      });
+      return {
+        ok: true,
+        model: {
+          id: model.id,
+          name: model.name,
+          connector: model.connector,
+          model: result.model,
+          transport: result.transport,
+        },
+        text: result.text,
+        latencyMs: result.latencyMs,
+        usage: result.usage ?? null,
+      };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.deps.comms.record({
+        kind: "error",
+        from: callee,
+        to: caller,
+        text: message,
+        correlationId,
+        meta: { label, via },
+      });
+      const status =
+        error instanceof AiConnectorError &&
+        ["no-key", "no-model", "no-base-url", "no-cli", "cli-missing"].includes(error.code)
+          ? 424
+          : 502;
+      throw Object.assign(new Error(message), { status });
+    }
   }
 
   private async bridgeReply(scope: BridgeScope, ref: string | null) {

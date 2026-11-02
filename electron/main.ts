@@ -424,6 +424,8 @@ const apiServer = new ApiServer({
   telemetryService,
   taskStore,
   portFile: PORT_FILE,
+  ai: aiConnectorService,
+  comms: commsLog,
 });
 
 function openPinPreviewWindow(repo: string, pinId: string): void {
