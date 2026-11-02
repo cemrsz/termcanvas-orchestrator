@@ -69,6 +69,7 @@ ekler; aşağıdaki liste commit sırasıyla aynıdır.
 57. [Şablon: Claude ⇄ Gemini ⇄ Codex](57-uclu-sablonu.md) — tek tıkla üç agent, herkes herkese pipeline'lı, ilk prompt'ta bilgilendirme
 58. [Şablon: Model konseyi](58-konsey-sablonu.md) — orkestratör ve ona bağlı üç AI düğümü tek tıkla
 59. [Terminal menüsü: pipeline](59-terminal-menusu-pipeline.md) — Pipeline bağla ▸, Pipeline'ı kes ▸, kime bağlı olduğunu söyle
+60. [Rozetler](60-rozetler.md) — kim kime bağlı bir bakışta: model sayısı ve ⇄ eş isimleri
 
 ## Nasıl kullanılır
 

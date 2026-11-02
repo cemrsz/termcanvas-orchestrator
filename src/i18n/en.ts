@@ -1072,6 +1072,17 @@ export const en = {
   "terminal.menu.unpipe": "Cut pipeline to",
   "terminal.menu.brief": "Tell it who it is wired to",
 
+  // Badges under wired tiles
+  "canvas.badge.orchestrator": "ORCHESTRATOR",
+  "canvas.badge.summary": (agents: number, models: number, sources: number) =>
+    [
+      `${agents} agent${agents === 1 ? "" : "s"}`,
+      ...(models > 0 ? [`${models} model${models === 1 ? "" : "s"}`] : []),
+      `${sources} source${sources === 1 ? "" : "s"}`,
+    ].join(" · "),
+  "canvas.badge.pipelineTitle": (names: string) =>
+    `Pipelines: can talk with ${names}`,
+
   // Canvas right-click menu
   "canvas.menu.new": (label: string) => `New ${label}`,
   "canvas.menu.newOrchestrator": "New Orchestrator",
