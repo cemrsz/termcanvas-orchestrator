@@ -32,12 +32,25 @@ import type {
   AiInvokeRequest,
   AiInvokeResult,
 } from "../shared/ai-connectors";
-import type { CommsParty } from "../shared/comms";
+import { clipCommsText, type CommsParty } from "../shared/comms";
 import type {
   BridgeAgent,
   BridgeManifest,
   BridgeModel,
 } from "../src/types/orchestration";
+
+function selfParty(manifest: BridgeManifest): CommsParty {
+  return {
+    kind: "agent",
+    id: manifest.self.id,
+    name: manifest.self.title,
+    type: manifest.self.type,
+  };
+}
+
+function agentParty(agent: Pick<BridgeAgent, "id" | "name" | "type">): CommsParty {
+  return { kind: "agent", id: agent.id, name: agent.name, type: agent.type };
+}
 
 /** How a wired model is told who it is and who is asking. */
 export function buildModelSystemPrompt(
@@ -254,7 +267,7 @@ export class ApiServer {
     // /bridge/<terminalId>/… serves any wired agent; /orchestrator/<id>/…
     // is the same API restricted to orchestrators (older bridge scripts).
     const bridgeMatch = pathname.match(
-      /^\/(bridge|orchestrator)\/([^/]+)(?:\/(agent|send|reply|model))?$/,
+      /^\/(bridge|orchestrator)\/([^/]+)(?:\/(agent|send|reply|model|event))?$/,
     );
     if (bridgeMatch) {
       const scope: BridgeScope = {
@@ -275,6 +288,7 @@ export class ApiServer {
         return this.bridgeReply(scope, url.searchParams.get("agent"));
       }
       if (method === "POST" && action === "model") return this.bridgeModel(scope, body);
+      if (method === "POST" && action === "event") return this.bridgeEvent(scope, body);
     }
 
     throw Object.assign(new Error("Not found"), { status: 404 });
@@ -814,6 +828,13 @@ export class ApiServer {
         { status: 500 },
       );
     }
+    this.deps.comms.record({
+      kind: "message",
+      from: selfParty(manifest),
+      to: agentParty(agent),
+      text,
+      meta: { via: agent.via },
+    });
     return { ok: true, agent: { id: agent.id, name: agent.name } };
   }
 
@@ -859,12 +880,7 @@ export class ApiServer {
     }
     const manifest = await this.loadBridgeManifest(scope);
     const model = this.resolveBridgeModel(manifest, body?.model);
-    const caller: CommsParty = {
-      kind: "agent",
-      id: manifest.self.id,
-      name: manifest.self.title,
-      type: manifest.self.type,
-    };
+    const caller = selfParty(manifest);
     const callee: CommsParty = {
       kind: "model",
       id: model.id,
@@ -953,18 +969,58 @@ export class ApiServer {
     const sessionReply = sessionFile
       ? extractLastAssistantReply(sessionFile)
       : null;
+    let reply: { agent: typeof agent; source: string; reply: string };
     if (sessionReply) {
-      return { agent, source: "session", reply: sessionReply };
+      reply = { agent, source: "session", reply: sessionReply };
+    } else {
+      // No transcript (e.g. a shell worker): fall back to the screen buffer.
+      const lines = agent.ptyId
+        ? this.deps.ptyManager.getOutput(agent.ptyId, 80)
+        : [];
+      reply = {
+        agent,
+        source: "terminal",
+        reply: stripAnsi(lines.join("\n")).trim(),
+      };
     }
-    // No transcript (e.g. a shell worker): fall back to the screen buffer.
-    const lines = agent.ptyId
-      ? this.deps.ptyManager.getOutput(agent.ptyId, 80)
-      : [];
-    return {
-      agent,
-      source: "terminal",
-      reply: stripAnsi(lines.join("\n")).trim(),
-    };
+    this.recordReply(manifest, agent, reply.reply);
+    return reply;
+  }
+
+  /** Put a reply in the feed once, however often the caller reads it. */
+  private recordReply(manifest: BridgeManifest, agent: BridgeAgent, text: string) {
+    if (!text.trim()) return;
+    const previous = this.deps.comms.last("reply", agent.id, manifest.self.id);
+    if (previous && previous.text === clipCommsText(text).text) return;
+    this.deps.comms.record({
+      kind: "reply",
+      from: agentParty(agent),
+      to: selfParty(manifest),
+      text,
+      meta: { via: agent.via },
+    });
+  }
+
+  /** The bridge CLI reports source reads and triggers for the feed. */
+  private async bridgeEvent(scope: BridgeScope, body: any) {
+    const kind = body?.kind;
+    if (kind !== "read" && kind !== "trigger") {
+      throw Object.assign(new Error("kind must be read or trigger"), { status: 400 });
+    }
+    const manifest = await this.loadBridgeManifest(scope);
+    const source = manifest.sources.find((candidate) => candidate.id === body?.source);
+    if (!source) {
+      throw Object.assign(new Error("source is not wired to you"), { status: 404 });
+    }
+    const status = Number(body?.status);
+    this.deps.comms.record({
+      kind,
+      from: selfParty(manifest),
+      to: { kind: "source", id: source.id, name: source.name, type: source.kind },
+      text: typeof body?.text === "string" ? body.text : "",
+      meta: Number.isFinite(status) ? { status } : undefined,
+    });
+    return { ok: true };
   }
 
   private async pinList(url: URL) {

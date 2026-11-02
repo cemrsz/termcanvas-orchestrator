@@ -141,6 +141,15 @@ function readSentAt(agentId) {
   }
 }
 
+/** Tell TermCanvas what happened, for the feed. Never fails the command. */
+async function reportEvent(event) {
+  try {
+    await api("POST", BASE + "/event", event, 5000);
+  } catch {
+    // The feed is best effort.
+  }
+}
+
 function describeModel(m) {
   return m.connectorName + " · " + (m.model || "default model") + " · " + m.transport;
 }
@@ -286,6 +295,7 @@ async function cmdSource(rest, flags) {
   if (s.description && s.kind !== "note") console.log("Notes: " + s.description);
   if (s.kind === "note") {
     console.log(s.description || "(empty note)");
+    await reportEvent({ kind: "read", source: s.id, text: "(note)" });
     return;
   }
   if (!s.url) throw new Error("Source '" + s.name + "' has no URL/path set on the canvas.");
@@ -296,6 +306,7 @@ async function cmdSource(rest, flags) {
     } else {
       console.log(truncate(limitLines(fs.readFileSync(s.url, "utf-8"), maxLines), MAX_PRINT_CHARS));
     }
+    await reportEvent({ kind: "read", source: s.id, text: s.url });
     return;
   }
   let target = s.kind === "sheet" ? sheetCsvUrl(s.url) : s.url;
@@ -319,6 +330,12 @@ async function cmdSource(rest, flags) {
   }
   if (!res.ok) console.log("HTTP " + res.status);
   console.log(truncate(limitLines(body, maxLines), MAX_PRINT_CHARS));
+  await reportEvent({
+    kind: "read",
+    source: s.id,
+    text: "GET " + target.replace(/[?#].*$/, "") + (flags.query ? "?" + flags.query : ""),
+    status: res.status,
+  });
 }
 
 async function cmdTrigger(rest, flags) {
@@ -339,6 +356,12 @@ async function cmdTrigger(rest, flags) {
   const body = await res.text();
   console.log("[" + s.name + "] HTTP " + res.status);
   console.log(truncate(body, MAX_PRINT_CHARS));
+  await reportEvent({
+    kind: "trigger",
+    source: s.id,
+    text: JSON.stringify(payload).slice(0, 2000),
+    status: res.status,
+  });
   if (!res.ok) process.exitCode = 1;
 }
 
