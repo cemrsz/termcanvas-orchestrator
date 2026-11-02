@@ -26,6 +26,7 @@ ekler; aşağıdaki liste commit sırasıyla aynıdır.
 14. [Düzeltme: tarayıcı kartı sürükleme](14-tarayici-karti.md) — n8n kartı gibi tarayıcı kartları taşınamıyordu
 15. [n8n okuma webhook'u ve kılavuz](15-n8n-ve-kilavuz.md) — özel Sheet'i n8n üzerinden okuma, kullanım kılavuzu
 16. [Bağlayıcı kataloğu](16-baglayici-katalogu.md) — Claude, Gemini, ChatGPT ve diğer sağlayıcılar; API ve CLI taşıma yolları
+17. [Bağlayıcılar: API](17-baglayici-http.md) — üç protokol için istek kurma, cevap okuma ve okunur hata mesajları
 
 ## Nasıl kullanılır
 
