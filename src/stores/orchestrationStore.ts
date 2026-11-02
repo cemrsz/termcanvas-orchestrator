@@ -373,6 +373,14 @@ export function captureOrchestration(
           ? liveTerminalIds.has(link.targetId)
           : link.targetId in sources),
     ),
-    pipes,
+    pipes: pipes.filter((pipe) => {
+      const alive = (id: string) => liveTerminalIds.has(id) || id in sources;
+      return (
+        alive(pipe.a) &&
+        alive(pipe.b) &&
+        !orchestratorSet.has(pipe.a) &&
+        !orchestratorSet.has(pipe.b)
+      );
+    }),
   };
 }

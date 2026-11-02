@@ -38,6 +38,7 @@ ekler; aşağıdaki liste commit sırasıyla aynıdır.
 26. [Veri modeli: pipeline ve AI düğümü](26-pipeline-veri-modeli.md) — yönsüz pipeline kabloları, ai kaynak türü, BridgeManifest
 27. [Store: pipeline kuralları](27-pipeline-kurallari.md) — connectPipe/disconnectPipe, orkestratöre çevirince pipeline'lar link olur
 28. [Store: AI düğümü](28-ai-dugumu-store.md) — addAiNode / updateAiConfig; ad bağlayıcıyı izler
+29. [Kalıcılık: pipeline ve AI düğümü](29-pipeline-kalicilik.md) — doğrulayarak okuma, ölü uçları ayıklayarak kaydetme
 
 ## Nasıl kullanılır
 

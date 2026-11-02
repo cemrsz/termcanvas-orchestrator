@@ -13,6 +13,7 @@ import type {
   OrchestrationDocument,
   OrchestrationSource,
 } from "./types/orchestration";
+import { isAiConnectorId, isAiTransport } from "../shared/ai-connectors";
 import type { WorkspaceCanvas, WorkspaceDocument } from "./types/workspace";
 import { DEFAULT_CANVAS_NAME } from "./types/workspace";
 import type { useProjectStore } from "./stores/projectStore";
@@ -641,13 +642,27 @@ function normalizeOrchestration(
   if (isRecord(raw.sources)) {
     for (const [id, source] of Object.entries(raw.sources)) {
       if (!isRecord(source) || typeof source.kind !== "string") continue;
+      const kind = source.kind as OrchestrationSource["kind"];
+      let ai: OrchestrationSource["ai"];
+      if (kind === "ai") {
+        // An AI node without a known connector cannot answer: drop it.
+        if (!isRecord(source.ai) || !isAiConnectorId(source.ai.connector)) continue;
+        ai = {
+          connector: source.ai.connector,
+          model: typeof source.ai.model === "string" ? source.ai.model : "",
+          transport: isAiTransport(source.ai.transport)
+            ? source.ai.transport
+            : "api",
+        };
+      }
       sources[id] = {
         id,
-        kind: source.kind as OrchestrationSource["kind"],
+        kind,
         name: typeof source.name === "string" ? source.name : "",
         url: typeof source.url === "string" ? source.url : "",
         description:
           typeof source.description === "string" ? source.description : "",
+        ...(ai ? { ai } : {}),
         x: typeof source.x === "number" ? source.x : 0,
         y: typeof source.y === "number" ? source.y : 0,
         w: typeof source.w === "number" ? source.w : 300,
@@ -665,7 +680,25 @@ function normalizeOrchestration(
           typeof link.targetId === "string",
       )
     : [];
-  return { orchestratorIds, sources, links, pipes: [] };
+  const seenPipes = new Set<string>();
+  const pipes = Array.isArray(raw.pipes)
+    ? raw.pipes.filter((pipe): pipe is OrchestrationDocument["pipes"][number] => {
+        if (
+          !isRecord(pipe) ||
+          typeof pipe.id !== "string" ||
+          typeof pipe.a !== "string" ||
+          typeof pipe.b !== "string" ||
+          pipe.a === pipe.b
+        ) {
+          return false;
+        }
+        const key = pipe.a < pipe.b ? `${pipe.a}|${pipe.b}` : `${pipe.b}|${pipe.a}`;
+        if (seenPipes.has(key)) return false;
+        seenPipes.add(key);
+        return true;
+      })
+    : [];
+  return { orchestratorIds, sources, links, pipes };
 }
 
 function looksLikeSceneWorkspaceSnapshot(record: Record<string, unknown>) {
