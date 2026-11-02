@@ -83,6 +83,7 @@ ekler; aşağıdaki liste commit sırasıyla aynıdır.
 71. [Düzeltme: sayfa dili ve Sen](71-dil-duzeltmeleri.md) — doğru Türkçe büyük harf, ekran okuyucu dili, yerelleştirilmiş kullanıcı adı
 72. [Testler pnpm test'te](72-test-listesi.md) — 605/607 geçiyor; 2 hata node-pty yerel modülü (ortam) kaynaklı
 73. [Kullanım kılavuzu](73-kullanim-kilavuzu.md) — üç agent'ı bağlama, AI Merkezi, orkestratör, tc.mjs komutları, notlar
+74. [Ana README notu](74-ana-readme.md) — fork notu yeni özellikleri ve kılavuzu gösteriyor
 
 ## Nasıl kullanılır
 

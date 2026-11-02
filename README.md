@@ -1,4 +1,4 @@
-> **Bu fork'ta:** n8n tarzı bir orkestratör agent eklendi. Tek agent'a komut verirsin; o, canvas'ta kabloyla bağlı agent'lara iş dağıtır ve bağlı kaynakları (Google Sheet, n8n webhook, API, dosya, not) kullanır. Kullanım ve 15 adımlık değişiklik günlüğü: [docs/orchestrator](docs/orchestrator/README.md)
+> **Bu fork'ta:** n8n tarzı bir **orkestratör agent**; **Claude ⇄ Gemini ⇄ Codex pipeline'ları** (canvas'ta kabloyla bağladığın agent'lar birbiriyle konuşur, tartışır, iş paslaşır); **AI Merkezi** (Claude, Gemini, ChatGPT ve 9 sağlayıcı daha için API anahtarı veya abonelik girişli CLI bağlayıcıları, aynı soruyu hepsine soran *konsey*, AI'lar arası canlı *akış*) ve **Türkçe arayüz**. Kullanım kılavuzu ve 75 adımlık değişiklik günlüğü: [docs/orchestrator](docs/orchestrator/README.md)
 
 <div align="center">
 
