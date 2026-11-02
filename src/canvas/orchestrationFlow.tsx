@@ -152,7 +152,13 @@ export function OrchestratorOutPort() {
 }
 
 /** Input ports of a worker agent tile or a source node. */
-export function OrchestrationInPort({ color }: { color: string }) {
+export function OrchestrationInPort({
+  color,
+  title,
+}: {
+  color: string;
+  title?: string;
+}) {
   return (
     <>
       {(["left", "right"] as const).map((side) => (
@@ -163,9 +169,24 @@ export function OrchestrationInPort({ color }: { color: string }) {
           position={side === "left" ? Position.Left : Position.Right}
           className="nodrag nopan"
           style={portStyle(color, side)}
+          title={title}
         />
       ))}
     </>
+  );
+}
+
+/**
+ * Ports of an agent tile (Claude, Gemini, Codex…). Every agent has them:
+ * an orchestrator wires its workers here, and two agents wired port to
+ * port get a pipeline they can both talk over.
+ */
+export function AgentPort({ color }: { color: string }) {
+  return (
+    <OrchestrationInPort
+      color={color}
+      title="Drag to another agent or an AI node to wire a pipeline"
+    />
   );
 }
 

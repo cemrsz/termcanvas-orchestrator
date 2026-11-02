@@ -25,12 +25,13 @@ import {
   useOrchestrationStore,
 } from "../stores/orchestrationStore";
 import {
+  AgentPort,
   ORCHESTRATOR_COLOR,
-  OrchestrationInPort,
   OrchestratorOutPort,
   orchestrationNodeTypes,
   type SourceFlowNode,
 } from "./orchestrationFlow";
+import { TERMINAL_TYPE_CONFIG } from "../terminal/terminalTypeConfig";
 
 const SNAP_GRID = 10;
 
@@ -86,9 +87,6 @@ function TerminalNode({ data }: NodeProps<TerminalFlowNode>) {
       (state) => state.orchestratorIds.includes(data.terminalId),
       [data.terminalId],
     ),
-  );
-  const hasOrchestrators = useOrchestrationStore(
-    (state) => state.orchestratorIds.length > 0,
   );
   const wiredSummary = useOrchestrationStore(
     useCallback(
@@ -275,8 +273,10 @@ function TerminalNode({ data }: NodeProps<TerminalFlowNode>) {
     return null;
   }
 
-  const showInPort =
-    !isOrchestrator && hasOrchestrators && isAgentTerminalType(terminal.type);
+  // Every agent can be wired: to an orchestrator or to other agents.
+  const showAgentPort = !isOrchestrator && isAgentTerminalType(terminal.type);
+  const agentColor =
+    TERMINAL_TYPE_CONFIG[terminal.type]?.color ?? ORCHESTRATOR_COLOR;
 
   return (
     <div
@@ -310,7 +310,7 @@ function TerminalNode({ data }: NodeProps<TerminalFlowNode>) {
           <OrchestratorOutPort />
         </>
       )}
-      {showInPort && <OrchestrationInPort color={ORCHESTRATOR_COLOR} />}
+      {showAgentPort && <AgentPort color={agentColor} />}
       <NodeResizer
         isVisible={hovered}
         minWidth={300}
