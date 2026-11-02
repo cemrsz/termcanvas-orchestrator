@@ -82,6 +82,7 @@ import {
   addAiNodeInScene,
   addOrchestrationSourceInScene,
   createAgentTrioInScene,
+  createModelCouncilInScene,
   connectPipeInScene,
   createOrchestratorInScene,
   ORCHESTRATOR_TYPES,
@@ -455,6 +456,16 @@ function XyFlowCanvasInner() {
     const target = resolveContextWorktree();
     if (!target) return;
     void createAgentTrioInScene({
+      ...target,
+      position: { x: contextMenu.flowX, y: contextMenu.flowY },
+    });
+  }, [contextMenu, resolveContextWorktree]);
+
+  const handleContextMenuCouncil = useCallback(() => {
+    if (!contextMenu) return;
+    const target = resolveContextWorktree();
+    if (!target) return;
+    void createModelCouncilInScene({
       ...target,
       position: { x: contextMenu.flowX, y: contextMenu.flowY },
     });
@@ -1039,6 +1050,11 @@ function XyFlowCanvasInner() {
                   label: t["canvas.menu.template.trio"],
                   hint: t["canvas.menu.template.trioHint"],
                   onClick: handleContextMenuTrio,
+                },
+                {
+                  label: t["canvas.menu.template.council"],
+                  hint: t["canvas.menu.template.councilHint"],
+                  onClick: handleContextMenuCouncil,
                 },
               ],
             },

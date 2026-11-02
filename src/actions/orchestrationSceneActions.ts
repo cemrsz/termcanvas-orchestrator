@@ -1,5 +1,6 @@
 import { createTerminal, useProjectStore } from "../stores/projectStore";
 import {
+  AI_NODE_HEIGHT,
   isAgentTerminalType,
   pipePeers,
   useOrchestrationStore,
@@ -379,6 +380,31 @@ export async function createAgentTrioInScene(options: {
     }
   }
   return created;
+}
+
+const COUNCIL_CONNECTORS: AiConnectorId[] = ["claude", "gemini", "chatgpt"];
+
+/**
+ * An orchestrator with Claude, Gemini and ChatGPT model nodes wired to it:
+ * ask it for a second opinion, a council or a debate between the models.
+ */
+export async function createModelCouncilInScene(options: {
+  projectId: string;
+  worktreeId: string;
+  position?: { x: number; y: number };
+  type?: OrchestratorType;
+}): Promise<TerminalData | null> {
+  const orchestrator = await createOrchestratorInScene(options);
+  if (!orchestrator) return null;
+  const x = orchestrator.x + orchestrator.width + 140;
+  COUNCIL_CONNECTORS.forEach((connector, index) => {
+    addAiNodeInScene(
+      connector,
+      { x, y: orchestrator.y + index * (AI_NODE_HEIGHT + 40) },
+      { connectTo: orchestrator.id },
+    );
+  });
+  return orchestrator;
 }
 
 /**

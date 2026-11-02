@@ -67,6 +67,7 @@ ekler; aşağıdaki liste commit sırasıyla aynıdır.
 55. [Sağ tık menüsünde alt menü](55-alt-menu.md) — fare ve klavyeyle iç içe menü; ekrana sığacak şekilde konumlanır
 56. [Canvas sağ tık menüsü](56-canvas-menusu.md) — Yeni Orkestratör ▸, AI Modeli Ekle ▸, Kaynak Ekle ▸; çeviriye hazır
 57. [Şablon: Claude ⇄ Gemini ⇄ Codex](57-uclu-sablonu.md) — tek tıkla üç agent, herkes herkese pipeline'lı, ilk prompt'ta bilgilendirme
+58. [Şablon: Model konseyi](58-konsey-sablonu.md) — orkestratör ve ona bağlı üç AI düğümü tek tıkla
 
 ## Nasıl kullanılır
 

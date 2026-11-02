@@ -1076,6 +1076,8 @@ export const en = {
   "canvas.menu.templates": "Templates",
   "canvas.menu.template.trio": "Claude ⇄ Gemini ⇄ Codex",
   "canvas.menu.template.trioHint": "3 agents, all wired",
+  "canvas.menu.template.council": "Model council",
+  "canvas.menu.template.councilHint": "orchestrator + Claude, Gemini, ChatGPT",
 } as const;
 
 export type TranslationKey = keyof typeof en;

@@ -185,3 +185,26 @@ test("the trio template opens Claude, Gemini and Codex fully wired and briefed",
     (window as any).termcanvas = undefined;
   }
 });
+
+test("the model council template wires Claude, Gemini and ChatGPT to a new orchestrator", async () => {
+  setup();
+  (window as any).termcanvas = {
+    orchestrator: {
+      prepare: async (id: string) => ({
+        instructionsRelPath: `.termcanvas/orchestrator/${id}/ORCHESTRATOR.md`,
+        scriptRelPath: `.termcanvas/orchestrator/${id}/tc.mjs`,
+        startPrompt: "You are the orchestrator",
+      }),
+    },
+  };
+  try {
+    const { createModelCouncilInScene } = await import("../src/actions/orchestrationSceneActions.ts");
+    const orchestrator = await createModelCouncilInScene({ projectId: "p1", worktreeId: "w1", position: { x: 0, y: 3000 } });
+    assert.ok(orchestrator);
+    const manifest = buildOrchestratorManifest(orchestrator.id);
+    assert.deepEqual(manifest?.models.map((m) => m.connector), ["claude", "gemini", "chatgpt"]);
+    assert.equal(orchestrator.initialPrompt, "You are the orchestrator");
+  } finally {
+    (window as any).termcanvas = undefined;
+  }
+});
