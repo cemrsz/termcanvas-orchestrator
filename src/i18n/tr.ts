@@ -462,6 +462,7 @@ export const tr = {
   "ai.feed.emptyTitle": "Henüz mesaj yok",
   "ai.feed.emptyBody":
     "İki agent'ı bir pipeline ile bağla (ya da Şablonlar ▸ Claude ⇄ Gemini ⇄ Codex) ve birinden diğeriyle konuşmasını iste. Her mesaj, cevap ve model çağrısı burada canlı görünür.",
+  "ai.feed.you": "Sen",
   "ai.feed.noMatch": "Bu süzgece uyan mesaj yok",
   "ai.hub.insecure":
     "Bu sistemde anahtar zinciri yok; anahtar şifrelenmeden, sadece senin kullanıcının okuyabildiği bir dosyada saklanıyor.",

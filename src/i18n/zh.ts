@@ -1134,6 +1134,7 @@ export const zh = {
   "ai.feed.emptyTitle": "还没有消息",
   "ai.feed.emptyBody":
     "用管道连接两个代理（或使用 模板 ▸ Claude ⇄ Gemini ⇄ Codex），然后让其中一个与另一个对话。每条消息、回复和模型调用都会实时显示在这里。",
+  "ai.feed.you": "你",
   "ai.feed.noMatch": "没有符合筛选条件的消息",
   "ai.hub.insecure": "此系统没有钥匙串，密钥以未加密形式保存在只有你的用户可读的文件中。",
 } as const;

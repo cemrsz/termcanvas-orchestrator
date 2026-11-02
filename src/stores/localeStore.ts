@@ -35,10 +35,25 @@ interface LocaleStore {
   setLocale: (locale: Locale) => void;
 }
 
+/**
+ * Keep <html lang> in step with the UI language: CSS uppercase then follows
+ * the language's rules (Turkish "diğer" → "DİĞER", not "DIĞER") and screen
+ * readers pick the right voice.
+ */
+function applyDocumentLanguage(locale: Locale) {
+  if (typeof document !== "undefined" && document.documentElement) {
+    document.documentElement.lang = locale === "zh" ? "zh-CN" : locale;
+  }
+}
+
+const initialLocale = detectLocale();
+applyDocumentLanguage(initialLocale);
+
 export const useLocaleStore = create<LocaleStore>((set) => ({
-  locale: detectLocale(),
+  locale: initialLocale,
   setLocale: (locale) => {
     getLocalStorage()?.setItem("termcanvas-locale", locale);
+    applyDocumentLanguage(locale);
     set({ locale });
   },
 }));

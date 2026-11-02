@@ -52,6 +52,9 @@ const KIND_TONE: Record<CommsKind, string> = {
 };
 
 function Party({ party }: { party: CommsParty }) {
+  const t = useT();
+  // The main process names the user "You"; show it in the UI language.
+  const name = party.kind === "user" ? t["ai.feed.you"] : party.name;
   return (
     <span className="inline-flex min-w-0 items-center gap-1.5">
       <span
@@ -59,7 +62,7 @@ function Party({ party }: { party: CommsParty }) {
         className="inline-block h-2 w-2 shrink-0 rounded-full"
         style={{ background: partyColor(party) }}
       />
-      <span className="truncate font-medium text-[var(--text-primary)]">{party.name}</span>
+      <span className="truncate font-medium text-[var(--text-primary)]">{name}</span>
     </span>
   );
 }

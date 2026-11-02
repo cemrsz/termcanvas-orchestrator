@@ -80,6 +80,7 @@ ekler; aşağıdaki liste commit sırasıyla aynıdır.
 68. [Çeviri: Çince](68-cince-ceviri.md) — AI düğümü, menüler, Hub ve akış metinleri Çince
 69. [Türkçe arayüz dili](69-turkce-dil.md) — Ayarlar'da Türkçe; AI Merkezi, menüler ve düğümler Türkçe
 70. [Türkçe: mevcut arayüz](70-turkce-arayuz.md) — en görünür ~280 metin Türkçe; toplam 403 anahtar
+71. [Düzeltme: sayfa dili ve Sen](71-dil-duzeltmeleri.md) — doğru Türkçe büyük harf, ekran okuyucu dili, yerelleştirilmiş kullanıcı adı
 
 ## Nasıl kullanılır
 

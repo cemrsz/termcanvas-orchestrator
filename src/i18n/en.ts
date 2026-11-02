@@ -1182,6 +1182,7 @@ export const en = {
   "ai.feed.emptyTitle": "No messages yet",
   "ai.feed.emptyBody":
     "Wire two agents with a pipeline (or use Templates ▸ Claude ⇄ Gemini ⇄ Codex) and ask one of them to talk to another. Every message, reply and model call shows up here live.",
+  "ai.feed.you": "You",
   "ai.feed.noMatch": "No message matches this filter",
   "ai.hub.insecure":
     "This system has no keyring, so the key is stored unencrypted in a file only your user can read.",
